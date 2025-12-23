@@ -15,30 +15,27 @@ def home():
 
 @app.route('/leech', methods=['POST', 'OPTIONS'])
 def leech():
-    # Menangani permintaan 'cek izin' dari browser
     if request.method == 'OPTIONS':
         return jsonify({"status": "OK"}), 200
         
     try:
         data = request.get_json(silent=True)
-        
         if not data:
             return jsonify({"status": "Error", "msg": "Request body kosong"}), 400
             
-        # Pastikan kunci yang diambil adalah 'url' sesuai dengan JS kamu
         url_target = data.get('url')
-        
         if not url_target:
             return jsonify({"status": "Error", "msg": "Kunci 'url' tidak ditemukan"}), 400
             
-        pesan = f"🚀 *New Leech Request*\n\nTarget: {url_target}"
+        # Kita hapus simbol bintang (*) dan ganti format pesan agar aman dari error parsing
+        pesan = f"🚀 New Leech Request\n\nTarget: {url_target}"
+        
         api_url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
         
-        # Kirim ke Telegram
+        # PENTING: Hapus "parse_mode": "Markdown" agar link tidak dianggap kode yang rusak
         r = requests.post(api_url, json={
             "chat_id": CHAT_ID, 
-            "text": pesan, 
-            "parse_mode": "Markdown"
+            "text": pesan
         }, timeout=15)
         
         if r.ok:
@@ -48,6 +45,6 @@ def leech():
             
     except Exception as e:
         return jsonify({"status": "Error", "msg": str(e)}), 500
-
 if __name__ == '__main__':
     app.run(debug=True)
+
