@@ -31,11 +31,20 @@ def leech():
         pesan = f"🚀 *New Leech Request*\n\nTarget: {url_target}"
         
         api_url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        r = requests.post(api_url, json={
+       # Ubah bagian pengiriman di index.py kamu menjadi seperti ini:
+r = requests.post(api_url, json={
     "chat_id": CHAT_ID, 
     "text": pesan, 
     "parse_mode": "Markdown"
 })
+
+# Tambahkan log ini untuk melihat apa kata Telegram di dashboard Vercel
+print(f"Respon Telegram: {r.status_code} - {r.text}")
+
+if r.ok:
+    return jsonify({"status": "Success", "msg": "Terkirim!"}), 200
+else:
+    return jsonify({"status": "Error", "msg": f"Telegram Error: {r.text}"}), r.status_code
         
         return jsonify({"status": "Success", "msg": "Terkirim!"}), 200
         
@@ -44,6 +53,7 @@ def leech():
         
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
 
