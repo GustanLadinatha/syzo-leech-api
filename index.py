@@ -7,7 +7,7 @@ app = Flask(__name__)
 CORS(app)
 
 TOKEN = "8229203638:AAHI-0fu5NGv8kQmUm5ztd81gbOautvJBB4"
-CHAT_ID = "-1002447926207" # Gunakan ID yang berawalan -100 jika itu Supergroup
+CHAT_ID = "-5089072043" # Gunakan ID yang berawalan -100 jika itu Supergroup
 
 @app.route('/')
 def home():
@@ -44,4 +44,5 @@ def leech():
         
 if __name__ == '__main__':
     app.run(debug=True)
+
 
