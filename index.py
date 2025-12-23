@@ -16,33 +16,32 @@ def home():
 @app.route('/leech', methods=['POST'])
 def leech():
     try:
-        data = request.json
-        if not data or 'url' not in data:
-            return jsonify({"status": "Error", "msg": "URL tidak ditemukan dalam request"}), 400
+        data = request.get_json(silent=True) # Pakai silent=True agar tidak langsung crash jika JSON kosong
+        print(f"Data diterima: {data}") # Ini akan muncul di log Vercel
+        
+        if not data:
+            return jsonify({"status": "Error", "msg": "Request body kosong"}), 400
             
-        url_target = data.get('url')
+        # Ambil URL, coba beberapa kemungkinan kunci (url atau link)
+        url_target = data.get('url') or data.get('link')
+        
+        if not url_target:
+            return jsonify({"status": "Error", "msg": "Mana link-nya? Kunci 'url' tidak ada"}), 400
+            
         pesan = f"🚀 *New Leech Request*\n\nTarget: {url_target}"
         
-        # Gunakan session untuk koneksi yang lebih stabil
-        session = requests.Session()
         api_url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        
-        # Coba kirim dengan timeout lebih panjang (20 detik)
-        r = session.post(api_url, json={
+        r = requests.post(api_url, json={
             "chat_id": CHAT_ID, 
             "text": pesan, 
             "parse_mode": "Markdown"
-        }, timeout=20)
+        }, timeout=15)
         
-        if r.ok:
-            return jsonify({"status": "Success", "msg": "Berhasil terkirim!"}), 200
-        else:
-            return jsonify({"status": "Error", "msg": f"Telegram Reject: {r.text}"}), r.status_code
-
-    except requests.exceptions.Timeout:
-        return jsonify({"status": "Error", "msg": "Server Vercel tidak bisa menjangkau Telegram (Timeout)"}), 504
+        return jsonify({"status": "Success", "msg": "Terkirim!"}), 200
+        
     except Exception as e:
-        return jsonify({"status": "Error", "msg": f"Crash: {str(e)}"}), 500
-
+        return jsonify({"status": "Error", "msg": str(e)}), 500
+        
 if __name__ == '__main__':
     app.run(debug=True)
+
