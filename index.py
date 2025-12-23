@@ -32,10 +32,10 @@ def leech():
         
         api_url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
         r = requests.post(api_url, json={
-            "chat_id": CHAT_ID, 
-            "text": pesan, 
-            "parse_mode": "Markdown"
-        }, timeout=15)
+    "chat_id": CHAT_ID, 
+    "text": pesan, 
+    "parse_mode": "Markdown"
+})
         
         return jsonify({"status": "Success", "msg": "Terkirim!"}), 200
         
@@ -44,5 +44,6 @@ def leech():
         
 if __name__ == '__main__':
     app.run(debug=True)
+
 
 
