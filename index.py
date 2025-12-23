@@ -32,8 +32,7 @@ def leech():
     "✅ *Leech Request Berhasil*\n\n"
     f"🌐 *Source:* SourceForge\n"
     f"🔗 *Link:* [Klik di Sini]({url_target})\n"
-    f"⏰ *Waktu:* {time.strftime('%H:%M:%S')} WIB"
-)
+    f"⏰ *Waktu:* {time.strftime('%H:%M:%S')} WIB")
         
         api_url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
         
@@ -52,4 +51,5 @@ def leech():
         return jsonify({"status": "Error", "msg": str(e)}), 500
 if __name__ == '__main__':
     app.run(debug=True)
+
 
