@@ -47,12 +47,3 @@ def leech():
         return jsonify({"status": "Error", "msg": str(e)}), 500
 if __name__ == '__main__':
     app.run(debug=True)
-
-# Contoh pesan yang lebih informatif
-pesan = (
-    "✅ *Leech Request Berhasil*\n\n"
-    f"🌐 *Source:* SourceForge\n"
-    f"🔗 *Link:* [Klik di Sini]({url_target})\n"
-    f"⏰ *Waktu:* {time.strftime('%H:%M:%S')} WIB"
-)
-# Jika pakai format [Teks](Link), pastikan nyalakan lagi parse_mode="Markdown"
