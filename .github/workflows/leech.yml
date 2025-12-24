@@ -1,4 +1,5 @@
 name: Syzo Leech Worker
+
 on:
   repository_dispatch:
     types: [start-leech]
@@ -10,50 +11,44 @@ jobs:
       - name: Notify Telegram (Process Start)
         run: |
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
-          -d "chat_id=${{ secrets.CHAT_ID }}&text=⚡ *Worker Started!*%0A sedang men-download dari SourceForge...&parse_mode=Markdown"
+          -d "chat_id=${{ secrets.CHAT_ID }}&text=⚡ *Worker Started!*%0Asedang men-download dari SourceForge...&parse_mode=Markdown"
+
+      - name: Install Dependencies
+        run: sudo apt-get install -y aria2 jq
 
       - name: Download File from SourceForge
         run: |
-          sudo apt-get install -y aria2
           URL="${{ github.event.client_payload.url }}"
-          
-          # Download dengan wget
-          wget -U "Mozilla/5.0" --header="Referer: https://sourceforge.net/" --content-disposition "$URL"
-          
-          # Ambil nama file asli yang barusan didownload
-          RAW_FILENAME=$(ls -p | grep -v / | head -n 1)
-          
-          # Bersihkan nama file dari karakter sesudah tanda '!' atau '?' (viasf, dll)
-          CLEAN_FILENAME=$(echo "$RAW_FILENAME" | cut -d'!' -f1 | cut -d'?' -f1)
-          
-          # Ganti nama file di sistem agar saat upload namanya bersih
-          if [ "$RAW_FILENAME" != "$CLEAN_FILENAME" ]; then
-            mv "$RAW_FILENAME" "$CLEAN_FILENAME"
-          fi
-          
-          echo "FILENAME=$CLEAN_FILENAME" >> $GITHUB_ENV
-          echo "✅ Berhasil download & bersihkan: $CLEAN_FILENAME"
+          aria2c -x 16 -s 16 --console-log-level=error "$URL"
+          FILENAME=$(ls | grep -v "leech.yml" | head -n 1)
+          echo "FILENAME=$FILENAME" >> $GITHUB_ENV
 
       - name: Upload to GoFile
+        id: upload
         run: |
-          echo "🚀 Memulai upload file: ${{ env.FILENAME }}"
+          echo "🚀 Uploading $FILENAME..."
+          # Mengambil server terbaik secara otomatis
+          SERVER=$(curl -s https://api.gofile.io/getServer | jq -r '.data.server')
+          RESPONSE=$(curl -F "file=@$FILENAME" "https://$SERVER.gofile.io/uploadFile")
           
-          # Melakukan upload dan menyimpan respons ke file
-          RESPONSE=$(curl -s -F "file=@${{ env.FILENAME }}" https://store-na-phx-3.gofile.io/contents/uploadfile)
-          
-          # Mengambil link download menggunakan 'jq' (lebih aman daripada grep/cut)
           DOWNLOAD_LINK=$(echo $RESPONSE | jq -r '.data.downloadPage')
           
           if [ "$DOWNLOAD_LINK" != "null" ]; then
             echo "DOWNLOAD_URL=$DOWNLOAD_LINK" >> $GITHUB_ENV
-            echo "✅ Berhasil mendapatkan link: $DOWNLOAD_LINK"
+            echo "✅ Success: $DOWNLOAD_LINK"
           else
-            echo "❌ Gagal mendapatkan link. Respon server: $RESPONSE"
+            echo "❌ Upload Failed"
             exit 1
           fi
 
-      - name: Notify Telegram
-  if: always() # Tambahkan ini agar tetap mengirim pesan walau step sebelumnya error
-  run: |
-    curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
-    -d "chat_id=${{ secrets.CHAT_ID }}&text=✅ Leech Berhasil!%0A%0AFile: ${{ env.FILENAME }}%0ALink: ${{ env.DOWNLOAD_URL }}"
+      - name: Notify Telegram (Success)
+        if: success()
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
+          -d "chat_id=${{ secrets.CHAT_ID }}&text=✅ *Leech Berhasil!*%0A%0A📦 *File:* `${{ env.FILENAME }}`%0A🔗 *Link:* ${{ env.DOWNLOAD_URL }}&parse_mode=Markdown"
+
+      - name: Notify Telegram (Failed)
+        if: failure()
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
+          -d "chat_id=${{ secrets.CHAT_ID }}&text=❌ *Leech Gagal!*%0APastikan link SourceForge benar atau server sedang tidak overload.&parse_mode=Markdown"
