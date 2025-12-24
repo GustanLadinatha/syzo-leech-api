@@ -9,14 +9,12 @@ jobs:
     steps:
       - name: Notify Telegram (Process Start)
         run: |
-          # Menggunakan nama secret yang konsisten
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
           -d "chat_id=${{ secrets.CHAT_ID }}&text=⚡ *Worker Started!*%0A sedang men-download dari SourceForge...&parse_mode=Markdown"
 
       - name: Download File from SourceForge
         run: |
           sudo apt-get install -y aria2
-          # Menggunakan wget dengan disguise browser agar tidak 403
           wget -U "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
                --header="Referer: https://sourceforge.net/" \
                -O leech_file \
@@ -25,15 +23,14 @@ jobs:
       - name: Upload to GoFile
         run: |
           echo "🚀 Memulai upload anonim ke GoFile..."
-          # Menggunakan endpoint global terbaru
-          RESPONSE=$(curl -F "file=@leech_file" https://upload.gofile.io/uploadfile)
+          RESPONSE=$(curl -s -F "file=@leech_file" https://upload.gofile.io/uploadfile)
           
           echo "Respon Server: $RESPONSE"
           
-          # Mengambil link download dari respon JSON
-          DOWNLOAD_URL=$(echo $RESPONSE | jq -r '.data.downloadPage')
+          # Mengambil link download menggunakan jq
+          DOWNLOAD_URL=$(echo "$RESPONSE" | jq -r '.data.downloadPage // empty')
           
-          if [ "$DOWNLOAD_URL" != "null" ] && [ -z "$DOWNLOAD_URL" != false ]; then
+          if [[ -n "$DOWNLOAD_URL" && "$DOWNLOAD_URL" != "null" ]]; then
             echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
             echo "✅ Berhasil! Link: $DOWNLOAD_URL"
           else
@@ -44,11 +41,8 @@ jobs:
       - name: Notify Telegram (Success)
         if: success()
         run: |
-          # Ambil link download dari environment yang disimpan di step sebelumnya
-          LINK="${{ env.DOWNLOAD_URL }}"
-          
-          # Kirim ke Telegram menggunakan nama secret yang sudah disatukan
+          # Mengirim pesan sukses ke group
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
             -d chat_id="${{ secrets.CHAT_ID }}" \
             -d parse_mode="HTML" \
-            -d text="<b>✅ Leech Berhasil!</b>%0A%0A🔗 <b>Link Download:</b> $LINK"
+            -d text="<b>✅ Leech Berhasil!</b>%0A%0A🔗 <b>Link Download:</b> ${{ env.DOWNLOAD_URL }}"
