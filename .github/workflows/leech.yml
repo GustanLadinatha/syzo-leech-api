@@ -12,6 +12,19 @@ jobs:
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
           -d "chat_id=${{ secrets.CHAT_ID }}&text=⚡ *Worker Started!*%0A Menyiapkan lingkungan bersih & analisa jalur...&parse_mode=Markdown"
 
+      # --- TAMBAHAN: CEK STATUS CANCEL AWAL ---
+      - name: Pre-Flight Check
+        run: |
+          # Cek ke API GitHub apakah proses ini sudah diminta cancel oleh User
+          STATUS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }} \
+            | jq -r '.status')
+          
+          if [ "$STATUS" == "cancelled" ] || [ "$STATUS" == "cancelling" ]; then
+            echo "🛑 Cancellation detected! Stopping worker immediately."
+            exit 1
+          fi
+
       - name: Universal High-Speed Download
         run: |
           sudo apt-get install -y aria2
@@ -32,7 +45,8 @@ jobs:
           echo "MD5_HASH=$(md5sum "$CLEAN_NAME" | awk '{print $1}')" >> $GITHUB_ENV
 
       - name: Upload to Multi-Cloud
-        # Step ini hanya jalan jika download berhasil
+        # Menambahkan pengecekan agar tidak upload jika step sebelumnya gagal/dicancel
+        if: success()
         run: |
           echo "🚀 Uploading GoFile..."
           RESP_GO=$(curl -s -F "file=@${{ env.FILENAME }}" https://upload.gofile.io/uploadfile)
@@ -45,7 +59,7 @@ jobs:
           echo "DOWNLOAD_URL_CATBOX=$URL_CAT" >> $GITHUB_ENV
 
       - name: Notify Telegram Success
-        # HANYA kirim jika semua step di atas sukses (Bukan dicancel)
+        # Modifikasi kondisi: Hanya kirim jika benar-benar sukses (bukan cancel)
         if: success()
         run: |
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
@@ -54,7 +68,6 @@ jobs:
             -d text="<b>✅ Leech Berhasil!</b>%0A%0A📄 <b>File:</b> ${{ env.FILENAME }}%0A🔑 <b>MD5:</b> <code>${{ env.MD5_HASH }}</code>%0A%0A🚀 <b>GoFile:</b> ${{ env.DOWNLOAD_URL_GOFILE }}%0A📦 <b>Catbox:</b> ${{ env.DOWNLOAD_URL_CATBOX }}%0A%0A🧹 <i>Status: Disk dibersihkan.</i>"
 
       - name: Deep Cleanup
-        # Jalankan pembersihan baik sukses, gagal, maupun dicancel
         if: always()
         run: |
           echo "🧹 Melakukan Deep Cleanup..."
