@@ -21,6 +21,10 @@ GITHUB_USERNAME = "GustanLadinatha"
 GITHUB_REPO = "syzo-leech-api"
 GITHUB_TOKEN = os.getenv("GH_TOKEN")
 
+@app.route('/')
+def home():
+    return "Syzo API is Running! Route /leech is active.", 200
+
 @app.route('/leech', methods=['POST', 'OPTIONS'])
 def leech():
     # WAJIB: Balas permintaan preflight browser segera
@@ -88,3 +92,4 @@ def leech():
 # Bagian paling bawah:
 if __name__ == "__main__":
     app.run(debug=True)
+
