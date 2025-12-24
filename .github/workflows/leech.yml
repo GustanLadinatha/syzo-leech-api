@@ -16,51 +16,44 @@ jobs:
       - name: Install Dependencies
         run: sudo apt-get update && sudo apt-get install -y aria2 jq wget
 
-      - name: Download File
+      - name: Download File from SourceForge
         run: |
           URL="${{ github.event.client_payload.url }}"
+          # Download dengan nama asli dari server
           wget -q --show-progress --content-disposition "$URL"
           
-          # Bersihkan nama file dari karakter aneh URL
+          # 1. Ambil nama asli filenya
           RAW_NAME=$(ls -p | grep -v / | grep -v "leech.yml" | head -n 1)
+          
+          # 2. CUCI NAMA FILE: Buang semua setelah tanda tanya (?)
           CLEAN_NAME=$(echo "$RAW_NAME" | cut -d'?' -f1)
           
+          # 3. Rename filenya secara paksa
           if [ "$RAW_NAME" != "$CLEAN_NAME" ]; then
             mv "$RAW_NAME" "$CLEAN_NAME"
           fi
+          
           echo "FILENAME=$CLEAN_NAME" >> $GITHUB_ENV
 
       - name: Upload to GoFile
         run: |
-          # 1. Ambil server yang tersedia dengan proteksi
-          SERVER_JSON=$(curl -s https://api.gofile.io/getServer)
-          SERVER=$(echo "$SERVER_JSON" | jq -r '.data.server // "store1"')
-          echo " menggunakan server: $SERVER"
-
-          # 2. Upload file dengan timeout dan retry
-          # Kita simpan respon langsung ke file agar aman dari karakter aneh
+          # Dapatkan server upload
+          SERVER=$(curl -s https://api.gofile.io/getServer | jq -r '.data.server // "store1"')
+          
+          # Upload menggunakan nama file yang sudah BERSIH
+          # Perhatikan penggunaan "@${{ env.FILENAME }}"
           curl -v -F "file=@${{ env.FILENAME }}" "https://${SERVER}.gofile.io/uploadFile" > response.json
           
-          # Tampilkan isi respon untuk debugging di log
-          echo "Server Response:"
-          cat response.json
-
-          # 3. Ambil link download dengan validasi JSON
-          if jq -e . response.json >/dev/null 2>&1; then
-            DOWNLOAD_LINK=$(jq -r '.data.downloadPage // empty' response.json)
+          # Validasi apakah GoFile memberikan link
+          if jq -e '.data.downloadPage' response.json >/dev/null; then
+             LINK=$(jq -r '.data.downloadPage' response.json)
+             echo "DOWNLOAD_URL=$LINK" >> $GITHUB_ENV
           else
-            echo "❌ Error: Respon dari GoFile bukan format JSON yang valid."
-            exit 1
+             echo "Upload Gagal!"
+             cat response.json
+             exit 1
           fi
-
-          # 4. Finalisasi link
-          if [[ -n "$DOWNLOAD_LINK" && "$DOWNLOAD_LINK" != "null" ]]; then
-            echo "DOWNLOAD_URL=$DOWNLOAD_LINK" >> $GITHUB_ENV
-            echo "✅ Upload Berhasil: $DOWNLOAD_LINK"
-          else
-            echo "❌ Upload Gagal. Periksa log di atas."
-            exit 1
-          fi
+          
       - name: Notify Telegram (Success)
         if: success()
         run: |
