@@ -12,7 +12,6 @@ app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 # --- KONFIGURASI ---
-# Pastikan semua ini sudah benar sesuai bot dan repo kamu
 TOKEN_BOT = "8229203638:AAHI-0fu5NGv8kQmUm5ztd81gbOautvJBB4"
 CHAT_ID = "-5089072043"
 GITHUB_USERNAME = "GustanLadinatha" 
@@ -67,10 +66,12 @@ def leech():
         response_gh = requests.post(dispatch_url, json=payload, headers=headers)
 
         if response_gh.status_code == 204:
-            # Beri jeda 2 detik agar GitHub sempat membuat 'Workflow Run'
-            time.sleep(2) 
+            # --- PERUBAHAN DISINI (SAFE START DELAY) ---
+            # Kita beri jeda 4 detik agar GitHub selesai mendaftarkan Run ID.
+            # Tanpa jeda ini, tombol cancel di web sering 'gagal' karena ID belum ada.
+            time.sleep(4) 
             
-            # Ambil Run ID terbaru untuk keperluan tombol Cancel
+            # Ambil Run ID terbaru
             runs_url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{GITHUB_REPO}/actions/runs?per_page=1"
             run_data = requests.get(runs_url, headers=headers).json()
             
@@ -80,7 +81,7 @@ def leech():
             
             return jsonify({
                 "status": "Success", 
-                "msg": "Worker berhasil dijalankan!",
+                "msg": "Worker is warming up...",
                 "run_id": run_id
             }), 200
         else:
