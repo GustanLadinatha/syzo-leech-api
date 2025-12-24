@@ -10,51 +10,58 @@ jobs:
       - name: Notify Telegram (Process Start)
         run: |
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
-          -d "chat_id=${{ secrets.CHAT_ID }}&text=⚡ *Worker Started!*%0A sedang men-download dari Master Server...&parse_mode=Markdown"
+          -d "chat_id=${{ secrets.CHAT_ID }}&text=⚡ *Worker Started!*%0A Menganalisa jalur download terbaik...&parse_mode=Markdown"
 
-      - name: Download File (Stable Master Mode)
+      - name: Auto-Discovery & Download
         run: |
           sudo apt-get install -y aria2
           URL="${{ github.event.client_payload.url }}"
           
-          echo "🚀 Mengunduh langsung dari: $URL"
-          
-          # Gunakan -x1 -s1 agar tidak memicu 'Invalid range header' atau 403
-          # Kita tambahkan --stream-piece-selector=geom agar lebih stabil di server lambat
-          aria2c -x1 -s1 -k1M --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
-          --header="Referer: https://sourceforge.net/" \
-          --connect-timeout=60 --timeout=60 --max-tries=50 \
-          --retry-wait=5 --console-log-level=error --summary-interval=10 "$URL"
-          
-          # Ambil nama file asli
-          RAW_FILENAME=$(ls -p | grep -v / | head -n 1)
-          
-          # Bersihkan nama file
-          CLEAN_FILENAME=$(echo "$RAW_FILENAME" | cut -d'!' -f1 | cut -d'?' -f1)
-          
-          if [ "$RAW_FILENAME" != "$CLEAN_FILENAME" ]; then
-            mv "$RAW_FILENAME" "$CLEAN_FILENAME"
+          # Daftar kandidat mirror kencang (Jepang, Irlandia, Jerman, Amerika)
+          MIRRORS=("jaist.dl" "heanet.dl" "netcologne.dl" "pilotfiber.dl")
+          BEST_URL="$URL" # Default ke link asli (Master)
+          FOUND_FAST=false
+
+          echo "🔍 Mengecek ketersediaan mirror kencang..."
+          for MIRROR in "${MIRRORS[@]}"; do
+            TEST_URL=$(echo "$URL" | sed "s/master.dl/$MIRROR/g")
+            
+            # Cek apakah mirror merespon dengan cepat (timeout 2 detik)
+            if curl -I -s --connect-timeout 2 -L "$TEST_URL" | grep -q "200 OK"; then
+              echo "✅ Jalur kencang ditemukan: $MIRROR"
+              BEST_URL="$TEST_URL"
+              FOUND_FAST=true
+              break
+            fi
+          done
+
+          if [ "$FOUND_FAST" = true ]; then
+            echo "🚀 Memulai High-Speed Leech (Multi-Connection)..."
+            # Pakai 16 koneksi karena mirror ini mendukung
+            aria2c -x16 -s16 -k1M --max-connection-per-server=16 \
+            --user-agent="Mozilla/5.0" --header="Referer: https://sourceforge.net/" \
+            --console-log-level=error --summary-interval=5 "$BEST_URL"
+          else
+            echo "⚠️ Hanya tersedia Master Server. Memulai Stable Mode..."
+            # Pakai 1 koneksi agar tidak kena 'Invalid range header' di server master
+            aria2c -x1 -s1 -k1M --user-agent="Mozilla/5.0" \
+            --header="Referer: https://sourceforge.net/" \
+            --console-log-level=error --summary-interval=10 "$URL"
           fi
+
+          # Ambil nama file asli & simpan ke ENV
+          FILENAME=$(ls -p | grep -v / | head -n 1)
+          CLEAN_NAME=$(echo "$FILENAME" | cut -d'!' -f1 | cut -d'?' -f1)
+          [ "$FILENAME" != "$CLEAN_NAME" ] && mv "$FILENAME" "$CLEAN_NAME"
           
-          # HITUNG HASH MD5
-          FILE_MD5=$(md5sum "$CLEAN_FILENAME" | awk '{ print $1 }')
-          echo "MD5_HASH=$FILE_MD5" >> $GITHUB_ENV
-          
-          echo "FILENAME=$CLEAN_FILENAME" >> $GITHUB_ENV
-          echo "✅ Selesai mengunduh: $CLEAN_FILENAME"
+          echo "FILENAME=$CLEAN_NAME" >> $GITHUB_ENV
+          echo "MD5_HASH=$(md5sum "$CLEAN_NAME" | awk '{print $1}')" >> $GITHUB_ENV
 
       - name: Upload to GoFile
         run: |
-          echo "🚀 Memulai upload file: ${{ env.FILENAME }}"
           RESPONSE=$(curl -s -F "file=@${{ env.FILENAME }}" https://upload.gofile.io/uploadfile)
           DOWNLOAD_URL=$(echo "$RESPONSE" | jq -r '.data.downloadPage // empty')
-          
-          if [[ -n "$DOWNLOAD_URL" && "$DOWNLOAD_URL" != "null" ]]; then
-            echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
-          else
-            echo "❌ Gagal upload ke GoFile. Respon: $RESPONSE"
-            exit 1
-          fi
+          echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
 
       - name: Notify Telegram (Success)
         if: success()
@@ -62,4 +69,4 @@ jobs:
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
             -d chat_id="${{ secrets.CHAT_ID }}" \
             -d parse_mode="HTML" \
-            -d text="<b>✅ Leech Berhasil!</b>%0A%0A📄 <b>File:</b> ${{ env.FILENAME }}%0A🔑 <b>MD5:</b> <code>${{ env.MD5_HASH }}</code>%0A🔗 <b>Link:</b> ${{ env.DOWNLOAD_URL }}"
+            -d text="<b>✅ Leech Selesai!</b>%0A%0A📄 <b>File:</b> ${{ env.FILENAME }}%0A🔑 <b>MD5:</b> <code>${{ env.MD5_HASH }}</code>%0A🔗 <b>Link:</b> ${{ env.DOWNLOAD_URL }}"
