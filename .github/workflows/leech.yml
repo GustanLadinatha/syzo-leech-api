@@ -30,20 +30,22 @@ jobs:
         run: |
           echo "🚀 Uploading ${{ env.FILENAME }}..."
           
-          # Mendapatkan server terbaik
-          SERVER=$(curl -s https://api.gofile.io/getServer | jq -r '.data.server // "store1"')
+          # 1. Ambil server yang tersedia
+          SERVER_DATA=$(curl -s https://api.gofile.io/getServer)
+          SERVER=$(echo $SERVER_DATA | jq -r '.data.server // "store1"')
           
-          # Proses Upload
+          # 2. Upload file
           RESPONSE=$(curl -F "file=@${{ env.FILENAME }}" "https://${SERVER}.gofile.io/uploadFile")
-          echo "Response: $RESPONSE"
+          echo "Server Response: $RESPONSE"
           
-          # Cek apakah response valid JSON
+          # 3. Ambil link dengan pengecekan extra
           DOWNLOAD_LINK=$(echo $RESPONSE | jq -r '.data.downloadPage // empty')
           
           if [[ -n "$DOWNLOAD_LINK" && "$DOWNLOAD_LINK" != "null" ]]; then
             echo "DOWNLOAD_URL=$DOWNLOAD_LINK" >> $GITHUB_ENV
+            echo "✅ Upload Berhasil"
           else
-            echo "❌ Error: Link tidak ditemukan dalam respon server."
+            echo "❌ Upload Gagal. Server Response: $RESPONSE"
             exit 1
           fi
 
