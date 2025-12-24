@@ -31,8 +31,14 @@ jobs:
             mv "$RAW_FILENAME" "$CLEAN_FILENAME"
           fi
           
+          # --- TAMBAHAN: HITUNG HASH MD5 ---
+          FILE_MD5=$(md5sum "$CLEAN_FILENAME" | awk '{ print $1 }')
+          echo "MD5_HASH=$FILE_MD5" >> $GITHUB_ENV
+          # --------------------------------
+          
           echo "FILENAME=$CLEAN_FILENAME" >> $GITHUB_ENV
           echo "✅ Berhasil download & bersihkan: $CLEAN_FILENAME"
+          echo "MD5: $FILE_MD5"
 
       - name: Upload to GoFile
         run: |
@@ -57,4 +63,4 @@ jobs:
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
             -d chat_id="${{ secrets.CHAT_ID }}" \
             -d parse_mode="HTML" \
-            -d text="<b>✅ Leech Berhasil!</b>%0A%0A📄 <b>File:</b> ${{ env.FILENAME }}%0A🔗 <b>Link:</b> ${{ env.DOWNLOAD_URL }}"
+            -d text="<b>✅ Leech Berhasil!</b>%0A%0A📄 <b>File:</b> ${{ env.FILENAME }}%0A🔑 <b>MD5:</b> <code>${{ env.MD5_HASH }}</code>%0A🔗 <b>Link:</b> ${{ env.DOWNLOAD_URL }}"
