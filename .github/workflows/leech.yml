@@ -38,16 +38,17 @@ jobs:
         run: |
           echo "🚀 Memulai upload file: ${{ env.FILENAME }}"
           
-          # Upload file dengan nama aslinya
-          RESPONSE=$(curl -s -F "file=@${{ env.FILENAME }}" https://upload.gofile.io/uploadfile)
+          # Melakukan upload dan menyimpan respons ke file
+          RESPONSE=$(curl -s -F "file=@${{ env.FILENAME }}" https://store-na-phx-3.gofile.io/contents/uploadfile)
           
-          # Ambil link download
-          DOWNLOAD_URL=$(echo "$RESPONSE" | jq -r '.data.downloadPage // empty')
+          # Mengambil link download menggunakan 'jq' (lebih aman daripada grep/cut)
+          DOWNLOAD_LINK=$(echo $RESPONSE | jq -r '.data.downloadPage')
           
-          if [[ -n "$DOWNLOAD_URL" && "$DOWNLOAD_URL" != "null" ]]; then
-            echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
+          if [ "$DOWNLOAD_LINK" != "null" ]; then
+            echo "DOWNLOAD_URL=$DOWNLOAD_LINK" >> $GITHUB_ENV
+            echo "✅ Berhasil mendapatkan link: $DOWNLOAD_LINK"
           else
-            echo "❌ Gagal upload. Respon: $RESPONSE"
+            echo "❌ Gagal mendapatkan link. Respon server: $RESPONSE"
             exit 1
           fi
 
