@@ -17,13 +17,22 @@ jobs:
           sudo apt-get install -y aria2
           URL="${{ github.event.client_payload.url }}"
           
-          # Download dan gunakan nama asli dari server
+          # Download dengan wget
           wget -U "Mozilla/5.0" --header="Referer: https://sourceforge.net/" --content-disposition "$URL"
           
-          # Ambil nama file asli yang baru didownload
-          FILENAME=$(ls -p | grep -v / | head -n 1)
-          echo "FILENAME=$FILENAME" >> $GITHUB_ENV
-          echo "✅ Berhasil download: $FILENAME"
+          # Ambil nama file asli yang barusan didownload
+          RAW_FILENAME=$(ls -p | grep -v / | head -n 1)
+          
+          # Bersihkan nama file dari karakter sesudah tanda '!' atau '?' (viasf, dll)
+          CLEAN_FILENAME=$(echo "$RAW_FILENAME" | cut -d'!' -f1 | cut -d'?' -f1)
+          
+          # Ganti nama file di sistem agar saat upload namanya bersih
+          if [ "$RAW_FILENAME" != "$CLEAN_FILENAME" ]; then
+            mv "$RAW_FILENAME" "$CLEAN_FILENAME"
+          fi
+          
+          echo "FILENAME=$CLEAN_FILENAME" >> $GITHUB_ENV
+          echo "✅ Berhasil download & bersihkan: $CLEAN_FILENAME"
 
       - name: Upload to GoFile
         run: |
