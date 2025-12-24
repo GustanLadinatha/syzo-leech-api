@@ -6,24 +6,37 @@ from datetime import datetime
 import pytz
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}})
-CORS(app)
+
+# Gunakan konfigurasi CORS yang paling luas agar localhost tidak diblokir
+CORS(app, resources={r"/*": {
+    "origins": "*",
+    "methods": ["GET", "POST", "OPTIONS"],
+    "allow_headers": ["Content-Type", "Authorization"]
+}})
 
 # --- KONFIGURASI ---
 TOKEN_BOT = "8229203638:AAHI-0fu5NGv8kQmUm5ztd81gbOautvJBB4"
 CHAT_ID = "-5089072043"
-GITHUB_USERNAME = "Gustan Ladinatha" # <-- Ganti dengan username GitHub kamu
-GITHUB_REPO = "syzo-leech-api"         # <-- Ganti dengan nama repository kamu
-GITHUB_TOKEN = os.getenv("GH_TOKEN")   # <-- Ganti dengan Token PAT ghp_ kamu
+GITHUB_USERNAME = "GustanLadinatha" 
+GITHUB_REPO = "syzo-leech-api"
+GITHUB_TOKEN = os.getenv("GH_TOKEN")
 
 @app.route('/leech', methods=['POST', 'OPTIONS'])
 def leech():
+    # Menangani pre-flight request dari browser secara manual jika CORS otomatis gagal
     if request.method == 'OPTIONS':
         return jsonify({"status": "OK"}), 200
         
     try:
+        # Tambahkan log ini agar kamu bisa cek di Vercel Dashboard jika error
+        print("Request masuk!") 
+        
         data = request.get_json(silent=True)
+        if not data:
+             return jsonify({"status": "Error", "msg": "JSON data tidak terbaca"}), 400
+             
         url_target = data.get('url')
+        # ... sisa kode kamu ke bawah tetap sama ...
         
         if not url_target:
             return jsonify({"status": "Error", "msg": "URL tidak ditemukan"}), 400
@@ -65,4 +78,5 @@ def leech():
             
     except Exception as e:
         return jsonify({"status": "Error", "msg": str(e)}), 500
+
 
