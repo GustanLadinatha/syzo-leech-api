@@ -11,33 +11,39 @@ jobs:
       - name: Notify Telegram (Process Start)
         run: |
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
-          -d "chat_id=${{ secrets.CHAT_ID }}&text=⚡ *Worker Started!*%0Asedang men-download dari SourceForge...&parse_mode=Markdown"
+          -d "chat_id=${{ secrets.CHAT_ID }}&text=⚡ *Worker Started!*%0Asedang mem-download file...&parse_mode=Markdown"
 
       - name: Install Dependencies
-        run: sudo apt-get install -y aria2 jq
+        run: sudo apt-get update && sudo apt-get install -y aria2 jq wget
 
-      - name: Download File from SourceForge
+      - name: Download File
         run: |
           URL="${{ github.event.client_payload.url }}"
-          aria2c -x 16 -s 16 --console-log-level=error "$URL"
-          FILENAME=$(ls | grep -v "leech.yml" | head -n 1)
+          # Menggunakan wget dengan retry 3x jika gagal
+          wget -q --show-progress --content-disposition --tries=3 "$URL"
+          # Ambil nama file asli (kecuali file script)
+          FILENAME=$(ls -p | grep -v / | grep -v "leech.yml" | head -n 1)
           echo "FILENAME=$FILENAME" >> $GITHUB_ENV
 
       - name: Upload to GoFile
         id: upload
         run: |
-          echo "🚀 Uploading $FILENAME..."
-          # Mengambil server terbaik secara otomatis
-          SERVER=$(curl -s https://api.gofile.io/getServer | jq -r '.data.server')
-          RESPONSE=$(curl -F "file=@$FILENAME" "https://$SERVER.gofile.io/uploadFile")
+          echo "🚀 Uploading ${{ env.FILENAME }}..."
           
-          DOWNLOAD_LINK=$(echo $RESPONSE | jq -r '.data.downloadPage')
+          # Mendapatkan server terbaik
+          SERVER=$(curl -s https://api.gofile.io/getServer | jq -r '.data.server // "store1"')
           
-          if [ "$DOWNLOAD_LINK" != "null" ]; then
+          # Proses Upload
+          RESPONSE=$(curl -F "file=@${{ env.FILENAME }}" "https://${SERVER}.gofile.io/uploadFile")
+          echo "Response: $RESPONSE"
+          
+          # Cek apakah response valid JSON
+          DOWNLOAD_LINK=$(echo $RESPONSE | jq -r '.data.downloadPage // empty')
+          
+          if [[ -n "$DOWNLOAD_LINK" && "$DOWNLOAD_LINK" != "null" ]]; then
             echo "DOWNLOAD_URL=$DOWNLOAD_LINK" >> $GITHUB_ENV
-            echo "✅ Success: $DOWNLOAD_LINK"
           else
-            echo "❌ Upload Failed"
+            echo "❌ Error: Link tidak ditemukan dalam respon server."
             exit 1
           fi
 
@@ -51,4 +57,4 @@ jobs:
         if: failure()
         run: |
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
-          -d "chat_id=${{ secrets.CHAT_ID }}&text=❌ *Leech Gagal!*%0APastikan link SourceForge benar atau server sedang tidak overload.&parse_mode=Markdown"
+          -d "chat_id=${{ secrets.CHAT_ID }}&text=❌ *Leech Gagal!*%0AProses terhenti di server. Coba lagi dalam beberapa saat.&parse_mode=Markdown"
