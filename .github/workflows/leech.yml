@@ -10,25 +10,28 @@ jobs:
       - name: Notify Telegram (Process Start)
         run: |
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
-          -d "chat_id=${{ secrets.CHAT_ID }}&text=⚡ *Worker Started!*%0A Menganalisa jalur download terbaik...&parse_mode=Markdown"
+          -d "chat_id=${{ secrets.CHAT_ID }}&text=⚡ *Worker Started!*%0A Menganalisa jalur & menyiapkan dual-upload...&parse_mode=Markdown"
 
       - name: Universal High-Speed Download
         run: |
           sudo apt-get install -y aria2
           URL="${{ github.event.client_payload.url }}"
           
-          # 1. Dapatkan link asli hasil redirect
+          # 1. Bersihkan lingkungan kerja
+          rm -rf * 2>/dev/null
+          
+          # 2. Dapatkan link asli hasil redirect (Anti-403)
           FINAL_URL=$(curl -sL -o /dev/null -w %{url_effective} "$URL")
           echo "🔗 Jalur yang digunakan: $FINAL_URL"
 
-          # 2. Download dengan 1 jalur kencang agar tidak error 'Invalid range'
-          # Meskipun CN:1, speed bisa tembus 20MB/s+ di mirror yang bagus
-          aria2c -x1 -s1 -k1M --user-agent="Mozilla/5.0" \
+          # 3. Download dengan 1 jalur kencang agar log bersih & tidak error
+          aria2c -x1 -s1 -k1M --allow-overwrite=true --file-allocation=none \
+          --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" \
           --header="Referer: https://sourceforge.net/" \
           --connect-timeout=60 --timeout=60 --max-tries=50 \
           --console-log-level=error --summary-interval=10 "$FINAL_URL"
           
-          # 3. Cleanup & Metadata
+          # 4. Cleanup & Metadata
           FILENAME=$(ls -p | grep -v / | head -n 1)
           CLEAN_NAME=$(echo "$FILENAME" | cut -d'!' -f1 | cut -d'?' -f1)
           [ "$FILENAME" != "$CLEAN_NAME" ] && mv "$FILENAME" "$CLEAN_NAME"
@@ -36,11 +39,17 @@ jobs:
           echo "FILENAME=$CLEAN_NAME" >> $GITHUB_ENV
           echo "MD5_HASH=$(md5sum "$CLEAN_NAME" | awk '{print $1}')" >> $GITHUB_ENV
 
-      - name: Upload to GoFile
+      - name: Upload to Multi-Cloud
         run: |
-          RESPONSE=$(curl -s -F "file=@${{ env.FILENAME }}" https://upload.gofile.io/uploadfile)
-          DOWNLOAD_URL=$(echo "$RESPONSE" | jq -r '.data.downloadPage // empty')
-          echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
+          echo "🚀 Mengunggah ke GoFile..."
+          RESP_GO=$(curl -s -F "file=@${{ env.FILENAME }}" https://upload.gofile.io/uploadfile)
+          URL_GO=$(echo "$RESP_GO" | jq -r '.data.downloadPage // empty')
+          
+          echo "🚀 Mengunggah ke Catbox..."
+          URL_CAT=$(curl -s -F "reqtype=fileupload" -F "fileToUpload=@${{ env.FILENAME }}" https://catbox.moe/user/api.php)
+          
+          echo "DOWNLOAD_URL_GOFILE=$URL_GO" >> $GITHUB_ENV
+          echo "DOWNLOAD_URL_CATBOX=$URL_CAT" >> $GITHUB_ENV
 
       - name: Notify Telegram (Success)
         if: success()
@@ -48,4 +57,4 @@ jobs:
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
             -d chat_id="${{ secrets.CHAT_ID }}" \
             -d parse_mode="HTML" \
-            -d text="<b>✅ Leech Berhasil!</b>%0A%0A📄 <b>File:</b> ${{ env.FILENAME }}%0A🔑 <b>MD5:</b> <code>${{ env.MD5_HASH }}</code>%0A🔗 <b>Link:</b> ${{ env.DOWNLOAD_URL }}"
+            -d text="<b>✅ Leech Berhasil!</b>%0A%0A📄 <b>File:</b> ${{ env.FILENAME }}%0A🔑 <b>MD5:</b> <code>${{ env.MD5_HASH }}</code>%0A%0A🚀 <b>Link Utama (GoFile):</b>%0A${{ env.DOWNLOAD_URL_GOFILE }}%0A%0A📦 <b>Link Cadangan (Catbox):</b>%0A${{ env.DOWNLOAD_URL_CATBOX }}"
