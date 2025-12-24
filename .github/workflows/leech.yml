@@ -24,20 +24,22 @@ jobs:
 
       - name: Upload to GoFile
         run: |
-          echo "🚀 Memulai upload anonim..."
-          # Langsung upload ke API utama tanpa cek server (agar tidak jq error)
-          RESPONSE=$(curl -s -F "file=@leech_file" https://api.gofile.io/uploadFile)
+          echo "🚀 Memulai upload anonim ke GoFile..."
+          
+          # Gunakan endpoint global sesuai gambar image_48e4b9.png
+          # Tanpa token, GoFile akan otomatis membuat akun guest baru
+          RESPONSE=$(curl -F "file=@leech_file" https://upload.gofile.io/uploadfile)
           
           echo "Respon Server: $RESPONSE"
           
-          # Mengambil link download dengan cara aman
-          DOWNLOAD_URL=$(echo $RESPONSE | jq -r '.data.downloadPage // empty')
+          # Mengambil link download dari respon JSON
+          DOWNLOAD_URL=$(echo $RESPONSE | jq -r '.data.downloadPage')
           
-          if [ -n "$DOWNLOAD_URL" ] && [ "$DOWNLOAD_URL" != "null" ]; then
+          if [ "$DOWNLOAD_URL" != "null" ]; then
             echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
-            echo "✅ File Berhasil di-upload: $DOWNLOAD_URL"
+            echo "✅ Berhasil! Link: $DOWNLOAD_URL"
           else
-            echo "❌ Gagal mendapatkan link. Respon: $RESPONSE"
+            echo "❌ Gagal mendapatkan link. Respon server tidak sesuai."
             exit 1
           fi
           
