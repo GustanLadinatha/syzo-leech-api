@@ -93,9 +93,16 @@ def leech():
     except Exception as e:
         return jsonify({"status": "Error", "msg": str(e)}), 500
 
-# --- ROUTE TAMBAHAN UNTUK CANCEL (BARU) ---
-@app.route('/cancel', methods=['POST'])
+@app.route('/cancel', methods=['POST', 'OPTIONS'])
 def cancel():
+    # WAJIB: Tangani preflight request dari browser
+    if request.method == 'OPTIONS':
+        response = jsonify({"status": "OK"})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
+        response.headers.add("Access-Control-Allow-Headers", "Content-Type")
+        return response, 200
+
     try:
         data = request.get_json()
         run_id = data.get('run_id')
@@ -111,11 +118,12 @@ def cancel():
 
         # 1. Matikan proses di GitHub
         cancel_url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{GITHUB_REPO}/actions/runs/{run_id}/cancel"
-        requests.post(cancel_url, headers=headers)
+        # Gunakan timeout agar tidak gantung jika GitHub lambat
+        requests.post(cancel_url, headers=headers, timeout=10)
 
         # 2. Kirim notifikasi pembatalan ke Telegram
         pesan_cancel = (
-            "❌ *Proses Dibatalkan*\n\n"
+            "❌ *PROSES DIBATALKAN*\n\n"
             f"📁 File: `{file_name}`\n"
             "⚠️ Status: _Aborted by User via Web_"
         )
@@ -123,11 +131,13 @@ def cancel():
             "chat_id": CHAT_ID, 
             "text": pesan_cancel, 
             "parse_mode": "Markdown"
-        })
+        }, timeout=10)
 
         return jsonify({"status": "Success", "msg": "Proses berhasil dihentikan"}), 200
     except Exception as e:
+        print(f"Error pada cancel: {str(e)}")
         return jsonify({"status": "Error", "msg": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(debug=True)
+
