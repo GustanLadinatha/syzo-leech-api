@@ -19,11 +19,16 @@ jobs:
       - name: Download File
         run: |
           URL="${{ github.event.client_payload.url }}"
-          # Menggunakan wget dengan retry 3x jika gagal
-          wget -q --show-progress --content-disposition --tries=3 "$URL"
-          # Ambil nama file asli (kecuali file script)
-          FILENAME=$(ls -p | grep -v / | grep -v "leech.yml" | head -n 1)
-          echo "FILENAME=$FILENAME" >> $GITHUB_ENV
+          wget -q --show-progress --content-disposition "$URL"
+          
+          # Bersihkan nama file dari karakter aneh URL
+          RAW_NAME=$(ls -p | grep -v / | grep -v "leech.yml" | head -n 1)
+          CLEAN_NAME=$(echo "$RAW_NAME" | cut -d'?' -f1)
+          
+          if [ "$RAW_NAME" != "$CLEAN_NAME" ]; then
+            mv "$RAW_NAME" "$CLEAN_NAME"
+          fi
+          echo "FILENAME=$CLEAN_NAME" >> $GITHUB_ENV
 
       - name: Upload to GoFile
         id: upload
