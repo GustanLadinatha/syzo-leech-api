@@ -1,59 +1,22 @@
-name: Syzo Leech Worker
-on:
-  repository_dispatch:
-    types: [start-leech]
-
-jobs:
-  leech-job:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Notify Telegram (Process Start)
-        run: |
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
-          -d "chat_id=${{ secrets.CHAT_ID }}&text=⚡ *Worker Started!*%0A Mengoptimalkan jalur download...&parse_mode=Markdown"
-
-      - name: Universal High-Speed Download
+- name: Universal High-Speed (Clean Log)
         run: |
           sudo apt-get install -y aria2
           URL="${{ github.event.client_payload.url }}"
           
-          # 1. DAPATKAN LINK FINAL (MENGATASI REDIRECT)
-          # Kita ambil link asli hasil redirect dari SourceForge agar tidak kena blokir domain
+          # Dapatkan link asli hasil redirect
           FINAL_URL=$(curl -sL -o /dev/null -w %{url_effective} "$URL")
-          echo "🔗 Final Link: $FINAL_URL"
+          echo "🔗 Jalur yang digunakan: $FINAL_URL"
 
-          # 2. LOGIKA DOWNLOAD CERDAS
-          # Jika link masih mengandung 'master.dl', kita pakai koneksi stabil (x4) agar tidak error
-          # Jika sudah berganti ke mirror lain, kita gas pol (x16)
-          if [[ "$FINAL_URL" == *"master.dl"* ]]; then
-            echo "🐢 Menggunakan Jalur Master (Optimized 4 Connections)..."
-            aria2c -x4 -s4 -k1M --max-connection-per-server=4 \
-            --user-agent="Mozilla/5.0" --header="Referer: https://sourceforge.net/" \
-            --console-log-level=error --summary-interval=10 "$FINAL_URL"
-          else
-            echo "🚀 Jalur Mirror Ditemukan! Memulai High-Speed (16 Connections)..."
-            aria2c -x16 -s16 -j16 -k1M --max-connection-per-server=16 \
-            --user-agent="Mozilla/5.0" --header="Referer: https://sourceforge.net/" \
-            --console-log-level=error --summary-interval=5 "$FINAL_URL"
-          fi
+          # GUNAKAN 1 KONEKSI TUNGGAL (-s1 -x1)
+          # Ini mencegah error 'Invalid range' tapi tetap kencang jika servernya bagus
+          aria2c -x1 -s1 -k1M --user-agent="Mozilla/5.0" \
+          --header="Referer: https://sourceforge.net/" \
+          --connect-timeout=60 --timeout=60 --max-tries=50 \
+          --console-log-level=error --summary-interval=10 "$FINAL_URL"
           
-          # 3. CLEANUP & ENV
+          # Cleanup & Metadata
           FILENAME=$(ls -p | grep -v / | head -n 1)
           CLEAN_NAME=$(echo "$FILENAME" | cut -d'!' -f1 | cut -d'?' -f1)
           [ "$FILENAME" != "$CLEAN_NAME" ] && mv "$FILENAME" "$CLEAN_NAME"
           echo "FILENAME=$CLEAN_NAME" >> $GITHUB_ENV
           echo "MD5_HASH=$(md5sum "$CLEAN_NAME" | awk '{print $1}')" >> $GITHUB_ENV
-
-      - name: Upload to GoFile
-        run: |
-          RESPONSE=$(curl -s -F "file=@${{ env.FILENAME }}" https://upload.gofile.io/uploadfile)
-          DOWNLOAD_URL=$(echo "$RESPONSE" | jq -r '.data.downloadPage // empty')
-          echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
-
-      - name: Notify Telegram (Success)
-        if: success()
-        run: |
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
-            -d chat_id="${{ secrets.CHAT_ID }}" \
-            -d parse_mode="HTML" \
-            -d text="<b>✅ Leech Berhasil!</b>%0A%0A📄 <b>File:</b> ${{ env.FILENAME }}%0A🔑 <b>MD5:</b> <code>${{ env.MD5_HASH }}</code>%0A🔗 <b>Link:</b> ${{ env.DOWNLOAD_URL }}"
