@@ -23,9 +23,13 @@ GITHUB_TOKEN = os.getenv("GH_TOKEN")
 
 @app.route('/leech', methods=['POST', 'OPTIONS'])
 def leech():
-    # Menangani pre-flight request dari browser secara manual jika CORS otomatis gagal
+    # WAJIB: Balas permintaan preflight browser segera
     if request.method == 'OPTIONS':
-        return jsonify({"status": "OK"}), 200
+        response = jsonify({"status": "OK"})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
+        response.headers.add("Access-Control-Allow-Headers", "Content-Type")
+        return response, 200
         
     try:
         # Tambahkan log ini agar kamu bisa cek di Vercel Dashboard jika error
@@ -78,5 +82,6 @@ def leech():
             
     except Exception as e:
         return jsonify({"status": "Error", "msg": str(e)}), 500
+
 
 
