@@ -12,13 +12,34 @@ jobs:
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
           -d "chat_id=${{ secrets.CHAT_ID }}&text=⚡ *Worker Started!*%0A sedang men-download dari SourceForge...&parse_mode=Markdown"
 
-      - name: Download File from SourceForge
+     - name: Download File from SourceForge
         run: |
           sudo apt-get install -y aria2
-          wget -U "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
-               --header="Referer: https://sourceforge.net/" \
-               -O leech_file \
-               "${{ github.event.client_payload.url }}"
+          URL="${{ github.event.client_payload.url }}"
+          
+          # Download dengan wget dan biarkan wget menentukan nama file aslinya
+          wget -U "Mozilla/5.0" --header="Referer: https://sourceforge.net/" --content-disposition "$URL"
+          
+          # Mengambil nama file yang baru saja didownload (file paling baru di folder)
+          FILENAME=$(ls -t | head -n 1)
+          echo "FILENAME=$FILENAME" >> $GITHUB_ENV
+          echo "✅ Berhasil download: $FILENAME"
+
+      - name: Upload to GoFile
+        run: |
+          echo "🚀 Memulai upload file: ${{ env.FILENAME }}"
+          
+          # Upload menggunakan nama file asli
+          RESPONSE=$(curl -s -F "file=@${{ env.FILENAME }}" https://upload.gofile.io/uploadfile)
+          
+          DOWNLOAD_URL=$(echo "$RESPONSE" | jq -r '.data.downloadPage // empty')
+          
+          if [[ -n "$DOWNLOAD_URL" && "$DOWNLOAD_URL" != "null" ]]; then
+            echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
+          else
+            echo "❌ Gagal upload. Respon: $RESPONSE"
+            exit 1
+          fi
 
       - name: Upload to GoFile
         run: |
