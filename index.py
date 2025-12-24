@@ -1,10 +1,12 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
+import os
 from datetime import datetime
 import pytz
 
 app = Flask(__name__)
+CORS(app, resources={r"/*": {"origins": "*"}})
 CORS(app)
 
 # --- KONFIGURASI ---
@@ -63,3 +65,4 @@ def leech():
             
     except Exception as e:
         return jsonify({"status": "Error", "msg": str(e)}), 500
+
