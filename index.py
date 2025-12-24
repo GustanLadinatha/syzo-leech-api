@@ -83,5 +83,8 @@ def leech():
     except Exception as e:
         return jsonify({"status": "Error", "msg": str(e)}), 500
 
+    # ... (kode import dan fungsi leech kamu) ...
 
-
+# Bagian paling bawah:
+if __name__ == "__main__":
+    app.run(debug=True)
