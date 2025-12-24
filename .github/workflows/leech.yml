@@ -10,28 +10,27 @@ jobs:
       - name: Notify Telegram (Process Start)
         run: |
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
-          -d "chat_id=${{ secrets.CHAT_ID }}&text=⚡ *Worker Started!*%0A Menganalisa jalur & menyiapkan dual-upload...&parse_mode=Markdown"
+          -d "chat_id=${{ secrets.CHAT_ID }}&text=⚡ *Worker Started!*%0A Menyiapkan lingkungan bersih & analisa jalur...&parse_mode=Markdown"
 
       - name: Universal High-Speed Download
         run: |
           sudo apt-get install -y aria2
           URL="${{ github.event.client_payload.url }}"
           
-          # 1. Pastikan folder bersih sebelum mulai
+          # 1. PRE-CLEANUP: Hapus semua file sisa sebelum mulai (Anti-Overflow)
           rm -rf * 2>/dev/null
           
-          # 2. Dapatkan link asli hasil redirect
+          # 2. Dapatkan link asli (Anti-403)
           FINAL_URL=$(curl -sL -o /dev/null -w %{url_effective} "$URL")
-          echo "🔗 Jalur yang digunakan: $FINAL_URL"
+          echo "🔗 Jalur: $FINAL_URL"
 
-          # 3. Download stabil (Anti-Red Error)
+          # 3. Download Stabil
           aria2c -x1 -s1 -k1M --allow-overwrite=true --file-allocation=none \
-          --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)" \
-          --header="Referer: https://sourceforge.net/" \
+          --user-agent="Mozilla/5.0" --header="Referer: https://sourceforge.net/" \
           --connect-timeout=60 --timeout=60 --max-tries=50 \
           --console-log-level=error --summary-interval=10 "$FINAL_URL"
           
-          # 4. Metadata
+          # 4. Metadata & Rename
           FILENAME=$(ls -p | grep -v / | head -n 1)
           CLEAN_NAME=$(echo "$FILENAME" | cut -d'!' -f1 | cut -d'?' -f1)
           [ "$FILENAME" != "$CLEAN_NAME" ] && mv "$FILENAME" "$CLEAN_NAME"
@@ -39,27 +38,29 @@ jobs:
           echo "FILENAME=$CLEAN_NAME" >> $GITHUB_ENV
           echo "MD5_HASH=$(md5sum "$CLEAN_NAME" | awk '{print $1}')" >> $GITHUB_ENV
 
-      - name: Upload and Auto-Cleanup
+      - name: Upload to Multi-Cloud
         run: |
-          echo "🚀 Mengunggah ke GoFile..."
+          echo "🚀 Uploading GoFile..."
           RESP_GO=$(curl -s -F "file=@${{ env.FILENAME }}" https://upload.gofile.io/uploadfile)
           URL_GO=$(echo "$RESP_GO" | jq -r '.data.downloadPage // empty')
           
-          echo "🚀 Mengunggah ke Catbox..."
+          echo "🚀 Uploading Catbox..."
           URL_CAT=$(curl -s -F "reqtype=fileupload" -F "fileToUpload=@${{ env.FILENAME }}" https://catbox.moe/user/api.php)
           
           echo "DOWNLOAD_URL_GOFILE=$URL_GO" >> $GITHUB_ENV
           echo "DOWNLOAD_URL_CATBOX=$URL_CAT" >> $GITHUB_ENV
-          
-          # === FITUR HAPUS OVERFLOW ===
-          echo "🧹 Membersihkan file setelah upload sukses..."
-          rm -f "${{ env.FILENAME }}"
-          echo "✅ Storage kembali bersih!"
 
-      - name: Notify Telegram (Success)
-        if: success()
+      - name: Notify Telegram & Final Cleanup
+        if: always()
         run: |
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
-            -d chat_id="${{ secrets.CHAT_ID }}" \
-            -d parse_mode="HTML" \
-            -d text="<b>✅ Leech Berhasil!</b>%0A%0A📄 <b>File:</b> ${{ env.FILENAME }}%0A🔑 <b>MD5:</b> <code>${{ env.MD5_HASH }}</code>%0A%0A🚀 <b>GoFile:</b> ${{ env.DOWNLOAD_URL_GOFILE }}%0A📦 <b>Catbox:</b> ${{ env.DOWNLOAD_URL_CATBOX }}%0A%0A🧹 <i>Status: File dihapus dari server GitHub.</i>"
+          # Kirim notifikasi sukses hanya jika proses berhasil
+          if [[ "${{ job.status }}" == "success" ]]; then
+            curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
+              -d chat_id="${{ secrets.CHAT_ID }}" \
+              -d parse_mode="HTML" \
+              -d text="<b>✅ Leech Berhasil!</b>%0A%0A📄 <b>File:</b> ${{ env.FILENAME }}%0A🔑 <b>MD5:</b> <code>${{ env.MD5_HASH }}</code>%0A%0A🚀 <b>GoFile:</b> ${{ env.DOWNLOAD_URL_GOFILE }}%0A📦 <b>Catbox:</b> ${{ env.DOWNLOAD_URL_CATBOX }}%0A%0A🧹 <i>Status: Disk dibersihkan.</i>"
+          fi
+
+          # POST-CLEANUP: Hapus file hasil download dan log untuk cegah overflow
+          echo "🧹 Melakukan Deep Cleanup..."
+          rm -rf * 2>/dev/null
