@@ -23,25 +23,21 @@ jobs:
       - name: Upload to GoFile
         run: |
           echo "🚀 Memulai upload anonim ke GoFile..."
-          RESPONSE=$(curl -s -F "file=@leech_file" https://upload.gofile.io/uploadfile)
+          # Langsung ambil link downloadPage saja menggunakan jq agar variabelnya bersih
+          DOWNLOAD_URL=$(curl -s -F "file=@leech_file" https://upload.gofile.io/uploadfile | jq -r '.data.downloadPage')
           
-          echo "Respon Server: $RESPONSE"
-          
-          # Mengambil link download menggunakan jq
-          DOWNLOAD_URL=$(echo "$RESPONSE" | jq -r '.data.downloadPage // empty')
-          
-          if [[ -n "$DOWNLOAD_URL" && "$DOWNLOAD_URL" != "null" ]]; then
+          if [[ "$DOWNLOAD_URL" != "null" && -n "$DOWNLOAD_URL" ]]; then
             echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
-            echo "✅ Berhasil! Link: $DOWNLOAD_URL"
+            echo "✅ Berhasil mendapatkan link!"
           else
-            echo "❌ Gagal mendapatkan link. Respon server: $RESPONSE"
+            echo "❌ Gagal mendapatkan link download."
             exit 1
           fi
 
       - name: Notify Telegram (Success)
         if: success()
         run: |
-          # Mengirim pesan sukses ke group
+          # Kirim notifikasi dengan link yang sudah tersimpan di environment
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
             -d chat_id="${{ secrets.CHAT_ID }}" \
             -d parse_mode="HTML" \
