@@ -9,14 +9,14 @@ jobs:
     steps:
       - name: Notify Telegram (Process Start)
         run: |
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELE_TOKEN }}/sendMessage" \
-          -d "chat_id=${{ secrets.TELE_ID }}&text=⚡ *Worker Started!*%0A sedang men-download dari SourceForge...&parse_mode=Markdown"
+          # Menggunakan nama secret yang konsisten
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
+          -d "chat_id=${{ secrets.CHAT_ID }}&text=⚡ *Worker Started!*%0A sedang men-download dari SourceForge...&parse_mode=Markdown"
 
       - name: Download File from SourceForge
         run: |
           sudo apt-get install -y aria2
-          # Mengambil URL dari kiriman Vercel
-          URL="${{ github.event.client_payload.url }}"
+          # Menggunakan wget dengan disguise browser agar tidak 403
           wget -U "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
                --header="Referer: https://sourceforge.net/" \
                -O leech_file \
@@ -25,9 +25,7 @@ jobs:
       - name: Upload to GoFile
         run: |
           echo "🚀 Memulai upload anonim ke GoFile..."
-          
-          # Gunakan endpoint global sesuai gambar image_48e4b9.png
-          # Tanpa token, GoFile akan otomatis membuat akun guest baru
+          # Menggunakan endpoint global terbaru
           RESPONSE=$(curl -F "file=@leech_file" https://upload.gofile.io/uploadfile)
           
           echo "Respon Server: $RESPONSE"
@@ -35,22 +33,21 @@ jobs:
           # Mengambil link download dari respon JSON
           DOWNLOAD_URL=$(echo $RESPONSE | jq -r '.data.downloadPage')
           
-          if [ "$DOWNLOAD_URL" != "null" ]; then
+          if [ "$DOWNLOAD_URL" != "null" ] && [ -z "$DOWNLOAD_URL" != false ]; then
             echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
             echo "✅ Berhasil! Link: $DOWNLOAD_URL"
           else
-            echo "❌ Gagal mendapatkan link. Respon server tidak sesuai."
+            echo "❌ Gagal mendapatkan link. Respon server: $RESPONSE"
             exit 1
           fi
-          
+
       - name: Notify Telegram (Success)
         if: success()
         run: |
-          # Ambil link download dari environment
+          # Ambil link download dari environment yang disimpan di step sebelumnya
           LINK="${{ env.DOWNLOAD_URL }}"
           
-          # Kirim pesan ke Group Telegram
-          # Pastikan rahasia (secrets) sudah diupdate di GitHub Settings
+          # Kirim ke Telegram menggunakan nama secret yang sudah disatukan
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
             -d chat_id="${{ secrets.CHAT_ID }}" \
             -d parse_mode="HTML" \
