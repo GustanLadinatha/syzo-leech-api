@@ -1,95 +1,53 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-import requests
-import os
-from datetime import datetime
-import pytz
+name: Syzo Leech Worker
 
-app = Flask(__name__)
+on:
+  repository_dispatch:
+    types: [start-leech]
 
-# Gunakan konfigurasi CORS yang paling luas agar localhost tidak diblokir
-CORS(app, resources={r"/*": {
-    "origins": "*",
-    "methods": ["GET", "POST", "OPTIONS"],
-    "allow_headers": ["Content-Type", "Authorization"]
-}})
+jobs:
+  leech-job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq wget curl
 
-# --- KONFIGURASI ---
-TOKEN_BOT = "8229203638:AAHI-0fu5NGv8kQmUm5ztd81gbOautvJBB4"
-CHAT_ID = "-5089072043"
-GITHUB_USERNAME = "GustanLadinatha" 
-GITHUB_REPO = "syzo-leech-api"
-GITHUB_TOKEN = os.getenv("GH_TOKEN")
+      - name: Download File from SourceForge
+        run: |
+          URL="${{ github.event.client_payload.url }}"
+          # Download dan paksa ambil nama file asli
+          wget -q --show-progress --content-disposition "$URL"
+          
+          # AMANKAN NAMA FILE: Buang karakter ?viasf=1 dan spasi
+          RAW_NAME=$(ls -p | grep -v / | grep -v "leech.yml" | head -n 1)
+          CLEAN_NAME=$(echo "$RAW_NAME" | cut -d'?' -f1 | tr ' ' '_')
+          
+          if [ "$RAW_NAME" != "$CLEAN_NAME" ]; then
+            mv "$RAW_NAME" "$CLEAN_NAME"
+          fi
+          
+          echo "FILENAME=$CLEAN_NAME" >> $GITHUB_ENV
 
-@app.route('/')
-def home():
-    return "Syzo API is Running! Route /leech is active.", 200
+      - name: Upload to GoFile
+        run: |
+          # Ambil server upload
+          SERVER=$(curl -s https://api.gofile.io/getServer | jq -r '.data.server // "store1"')
+          
+          # Upload file yang sudah bersih namanya
+          curl -v -F "file=@${{ env.FILENAME }}" "https://${SERVER}.gofile.io/uploadFile" > response.json
+          
+          # Ambil link download
+          DOWNLOAD_LINK=$(jq -r '.data.downloadPage // empty' response.json)
+          
+          if [ "$DOWNLOAD_LINK" != "" ] && [ "$DOWNLOAD_LINK" != "null" ]; then
+            echo "DOWNLOAD_URL=$DOWNLOAD_LINK" >> $GITHUB_ENV
+          else
+            echo "Gagal Upload. Respon:"
+            cat response.json
+            exit 1
+          fi
 
-@app.route('/leech', methods=['POST', 'OPTIONS'])
-def leech():
-    # WAJIB: Balas permintaan preflight browser segera
-    if request.method == 'OPTIONS':
-        response = jsonify({"status": "OK"})
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
-        response.headers.add("Access-Control-Allow-Headers", "Content-Type")
-        return response, 200
-        
-    try:
-        # Tambahkan log ini agar kamu bisa cek di Vercel Dashboard jika error
-        print("Request masuk!") 
-        
-        data = request.get_json(silent=True)
-        if not data:
-             return jsonify({"status": "Error", "msg": "JSON data tidak terbaca"}), 400
-             
-        url_target = data.get('url')
-        # ... sisa kode kamu ke bawah tetap sama ...
-        
-        if not url_target:
-            return jsonify({"status": "Error", "msg": "URL tidak ditemukan"}), 400
-
-        # 1. Kirim Notifikasi Awal ke Telegram
-        tz_jkt = pytz.timezone('Asia/Jakarta')
-        waktu_sekarang = datetime.now(tz_jkt).strftime('%H:%M:%S')
-        
-        pesan_awal = (
-            "🚀 *New Request Received*\n\n"
-            f"🔗 Target: `{url_target}`\n"
-            f"⏰ Time: {waktu_sekarang} WIB\n\n"
-            "⏳ _Menghubungi GitHub Worker..._"
-        )
-        
-        requests.post(f"https://api.telegram.org/bot{TOKEN_BOT}/sendMessage", json={
-            "chat_id": CHAT_ID, 
-            "text": pesan_awal,
-            "parse_mode": "Markdown"
-        })
-
-        # 2. Trigger GitHub Actions (The Worker)
-        dispatch_url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{GITHUB_REPO}/dispatches"
-        headers = {
-            "Authorization": f"token {GITHUB_TOKEN}",
-            "Accept": "application/vnd.github.v3+json"
-        }
-        payload = {
-            "event_type": "start-leech", # Harus sama dengan 'types' di leech.yml
-            "client_payload": {"url": url_target}
-        }
-        
-        response_gh = requests.post(dispatch_url, json=payload, headers=headers)
-
-        if response_gh.status_code == 204:
-            return jsonify({"status": "Success", "msg": "Worker berhasil dijalankan!"}), 200
-        else:
-            return jsonify({"status": "Error", "msg": f"Gagal kontak GitHub: {response_gh.text}"}), 500
-            
-    except Exception as e:
-        return jsonify({"status": "Error", "msg": str(e)}), 500
-
-    # ... (kode import dan fungsi leech kamu) ...
-
-# Bagian paling bawah:
-if __name__ == "__main__":
-    app.run(debug=True)
-
+      - name: Notify Telegram (Success)
+        if: success()
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
+          -d "chat_id=${{ secrets.CHAT_ID }}&text=✅ Leech Berhasil!%0A%0AFile: ${{ env.FILENAME }}%0AURL: ${{ env.DOWNLOAD_URL }}"
