@@ -52,10 +52,8 @@ jobs:
             exit 1
           fi
 
-      - name: Notify Telegram (Success)
-        if: success()
-        run: |
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
-            -d chat_id="${{ secrets.CHAT_ID }}" \
-            -d parse_mode="HTML" \
-            -d text="<b>✅ Leech Berhasil!</b>%0A%0A📄 <b>File:</b> ${{ env.FILENAME }}%0A🔗 <b>Link:</b> ${{ env.DOWNLOAD_URL }}"
+      - name: Notify Telegram
+  if: always() # Tambahkan ini agar tetap mengirim pesan walau step sebelumnya error
+  run: |
+    curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
+    -d "chat_id=${{ secrets.CHAT_ID }}&text=✅ Leech Berhasil!%0A%0AFile: ${{ env.FILENAME }}%0ALink: ${{ env.DOWNLOAD_URL }}"
