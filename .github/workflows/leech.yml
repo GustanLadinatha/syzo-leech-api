@@ -12,16 +12,20 @@ jobs:
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
           -d "chat_id=${{ secrets.CHAT_ID }}&text=⚡ *Worker Started!*%0A Menyiapkan lingkungan bersih & analisa jalur...&parse_mode=Markdown"
 
-      # --- TAMBAHAN: CEK STATUS CANCEL AWAL ---
-      - name: Pre-Flight Check
+      # --- LOGIKA SAFE START: JEDA & CEK CANCEL INSTAN ---
+      - name: Safe Start Delay & Check
         run: |
+          # Beri jeda 3 detik agar sinkron dengan perintah cancel dari web
+          echo "Warming up and checking for early cancellation..."
+          sleep 3
+          
           # Cek ke API GitHub apakah proses ini sudah diminta cancel oleh User
           STATUS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }} \
             | jq -r '.status')
           
           if [ "$STATUS" == "cancelled" ] || [ "$STATUS" == "cancelling" ]; then
-            echo "🛑 Cancellation detected! Stopping worker immediately."
+            echo "🛑 Cancellation detected early! Stopping worker immediately."
             exit 1
           fi
 
@@ -45,7 +49,7 @@ jobs:
           echo "MD5_HASH=$(md5sum "$CLEAN_NAME" | awk '{print $1}')" >> $GITHUB_ENV
 
       - name: Upload to Multi-Cloud
-        # Menambahkan pengecekan agar tidak upload jika step sebelumnya gagal/dicancel
+        # Tetap menggunakan if: success() agar tidak upload jika dicancel
         if: success()
         run: |
           echo "🚀 Uploading GoFile..."
@@ -59,7 +63,7 @@ jobs:
           echo "DOWNLOAD_URL_CATBOX=$URL_CAT" >> $GITHUB_ENV
 
       - name: Notify Telegram Success
-        # Modifikasi kondisi: Hanya kirim jika benar-benar sukses (bukan cancel)
+        # Hanya kirim jika benar-benar sukses (Bukan dicancel)
         if: success()
         run: |
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
