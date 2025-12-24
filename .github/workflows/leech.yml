@@ -46,7 +46,14 @@ jobs:
       - name: Notify Telegram (Success)
         if: success()
         run: |
+          # Mengambil link yang berhasil di-upload
+          DOWNLOAD_URL="${{ env.DOWNLOAD_URL }}"
+          
+          # Membuat pesan (Gunakan %0A untuk baris baru)
+          MESSAGE="✅ *Leech Berhasil!*%0A%0A🔗 *Link Download:* $DOWNLOAD_URL"
+          
+          # Kirim menggunakan cURL
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
-               -d chat_id="${{ secrets.CHAT_ID }}" \
-               -d parse_mode="Markdown" \
-               -d text="✅ *Leech Berhasil!*%0A%0A🔗 *Link Download:* ${{ env.DOWNLOAD_URL }}"
+            -d chat_id="${{ secrets.CHAT_ID }}" \
+            -d text="$MESSAGE" \
+            -d parse_mode="Markdown"
