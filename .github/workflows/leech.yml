@@ -23,10 +23,11 @@ jobs:
       - name: Upload to GoFile
         run: |
           echo "🚀 Memulai upload anonim ke GoFile..."
-          # Langsung ambil link downloadPage saja menggunakan jq agar variabelnya bersih
-          DOWNLOAD_URL=$(curl -s -F "file=@leech_file" https://upload.gofile.io/uploadfile | jq -r '.data.downloadPage')
+          # Langsung filter link downloadPage agar variabelnya pendek dan bersih
+          DOWNLOAD_URL=$(curl -s -F "file=@leech_file" https://upload.gofile.io/uploadfile | jq -r '.data.downloadPage // empty')
           
-          if [[ "$DOWNLOAD_URL" != "null" && -n "$DOWNLOAD_URL" ]]; then
+          # Gunakan tanda kutip untuk mencegah error "too many arguments"
+          if [ -n "$DOWNLOAD_URL" ] && [ "$DOWNLOAD_URL" != "null" ]; then
             echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
             echo "✅ Berhasil mendapatkan link!"
           else
@@ -37,7 +38,7 @@ jobs:
       - name: Notify Telegram (Success)
         if: success()
         run: |
-          # Kirim notifikasi dengan link yang sudah tersimpan di environment
+          # Kirim notifikasi dengan link yang sudah sangat bersih
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
             -d chat_id="${{ secrets.CHAT_ID }}" \
             -d parse_mode="HTML" \
