@@ -17,7 +17,7 @@ jobs:
           sudo apt-get install -y aria2
           # Mengambil URL dari kiriman Vercel
           URL="${{ github.event.client_payload.url }}"
-          aria2c -x 16 -s 16 -k 1M --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" "${{ github.event.client_payload.url }}" -o leech_file
+          wget -U "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" -O leech_file "${{ github.event.client_payload.url }}"
 
       - name: Upload to GoFile
         id: upload
