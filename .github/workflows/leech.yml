@@ -23,19 +23,23 @@ jobs:
                "${{ github.event.client_payload.url }}"
 
       - name: Upload to GoFile
-        id: upload
         run: |
-          # 1. Dapatkan server terbaik secara dinamis
-          SERVER=$(curl -s https://api.gofile.io/getServer | jq -r '.data.server')
+          echo "🚀 Memulai upload anonim..."
+          # Langsung upload ke API utama tanpa cek server (agar tidak jq error)
+          RESPONSE=$(curl -s -F "file=@leech_file" https://api.gofile.io/uploadFile)
           
-          # 2. Upload file
-          echo "Uploading to server: $SERVER"
-          RESPONSE=$(curl -F "file=@leech_file" "https://${SERVER}.gofile.io/uploadFile")
+          echo "Respon Server: $RESPONSE"
           
-          # 3. Ambil Download Page URL
-          DOWNLOAD_URL=$(echo $RESPONSE | jq -r '.data.downloadPage')
-          echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
-          echo "File uploaded successfully: $DOWNLOAD_URL"
+          # Mengambil link download dengan cara aman
+          DOWNLOAD_URL=$(echo $RESPONSE | jq -r '.data.downloadPage // empty')
+          
+          if [ -n "$DOWNLOAD_URL" ] && [ "$DOWNLOAD_URL" != "null" ]; then
+            echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
+            echo "✅ File Berhasil di-upload: $DOWNLOAD_URL"
+          else
+            echo "❌ Gagal mendapatkan link. Respon: $RESPONSE"
+            exit 1
+          fi
           
       - name: Notify Telegram (Finished)
         run: |
