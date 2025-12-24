@@ -12,42 +12,37 @@ jobs:
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
           -d "chat_id=${{ secrets.CHAT_ID }}&text=⚡ *Worker Started!*%0A sedang men-download dari SourceForge...&parse_mode=Markdown"
 
-      - name: Download File from SourceForge
+      - name: Download File (Multi-Connection Speed)
         run: |
           sudo apt-get install -y aria2
           URL="${{ github.event.client_payload.url }}"
           
-          # Download dengan wget
-          wget -U "Mozilla/5.0" --header="Referer: https://sourceforge.net/" --content-disposition "$URL"
+          # MENGGUNAKAN ARIA2C UNTUK SPEED MAKSIMAL
+          # -x16: Menggunakan 16 koneksi ke server
+          # -s16: Membagi file jadi 16 bagian untuk didownload barengan
+          aria2c -x16 -s16 -k1M --user-agent="Mozilla/5.0" --console-log-level=error --summary-interval=0 "$URL"
           
-          # Ambil nama file asli yang barusan didownload
+          # Ambil nama file asli
           RAW_FILENAME=$(ls -p | grep -v / | head -n 1)
           
-          # Bersihkan nama file dari karakter sesudah tanda '!' atau '?' (viasf, dll)
+          # Bersihkan nama file
           CLEAN_FILENAME=$(echo "$RAW_FILENAME" | cut -d'!' -f1 | cut -d'?' -f1)
           
-          # Ganti nama file di sistem agar saat upload namanya bersih
           if [ "$RAW_FILENAME" != "$CLEAN_FILENAME" ]; then
             mv "$RAW_FILENAME" "$CLEAN_FILENAME"
           fi
           
-          # --- TAMBAHAN: HITUNG HASH MD5 ---
+          # HITUNG HASH MD5
           FILE_MD5=$(md5sum "$CLEAN_FILENAME" | awk '{ print $1 }')
           echo "MD5_HASH=$FILE_MD5" >> $GITHUB_ENV
-          # --------------------------------
           
           echo "FILENAME=$CLEAN_FILENAME" >> $GITHUB_ENV
-          echo "✅ Berhasil download & bersihkan: $CLEAN_FILENAME"
-          echo "MD5: $FILE_MD5"
+          echo "✅ Berhasil download (Aria2c) & bersihkan: $CLEAN_FILENAME"
 
       - name: Upload to GoFile
         run: |
           echo "🚀 Memulai upload file: ${{ env.FILENAME }}"
-          
-          # Upload file dengan nama aslinya
           RESPONSE=$(curl -s -F "file=@${{ env.FILENAME }}" https://upload.gofile.io/uploadfile)
-          
-          # Ambil link download
           DOWNLOAD_URL=$(echo "$RESPONSE" | jq -r '.data.downloadPage // empty')
           
           if [[ -n "$DOWNLOAD_URL" && "$DOWNLOAD_URL" != "null" ]]; then
