@@ -9,7 +9,21 @@
   "routes": [
     {
       "src": "/leech",
-      "dest": "index.py"
+      "dest": "index.py",
+      "headers": { 
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST,OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type"
+      }
+    },
+    {
+      "src": "/cancel",
+      "dest": "index.py",
+      "headers": { 
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST,OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type"
+      }
     }
   ]
 }
