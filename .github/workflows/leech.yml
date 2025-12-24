@@ -16,21 +16,14 @@ jobs:
         run: |
           sudo apt-get install -y aria2
           URL="${{ github.event.client_payload.url }}"
-          
-          # 1. PRE-CLEANUP: Hapus semua file sisa sebelum mulai (Anti-Overflow)
           rm -rf * 2>/dev/null
-          
-          # 2. Dapatkan link asli (Anti-403)
           FINAL_URL=$(curl -sL -o /dev/null -w %{url_effective} "$URL")
-          echo "🔗 Jalur: $FINAL_URL"
-
-          # 3. Download Stabil
+          
           aria2c -x1 -s1 -k1M --allow-overwrite=true --file-allocation=none \
           --user-agent="Mozilla/5.0" --header="Referer: https://sourceforge.net/" \
           --connect-timeout=60 --timeout=60 --max-tries=50 \
           --console-log-level=error --summary-interval=10 "$FINAL_URL"
           
-          # 4. Metadata & Rename
           FILENAME=$(ls -p | grep -v / | head -n 1)
           CLEAN_NAME=$(echo "$FILENAME" | cut -d'!' -f1 | cut -d'?' -f1)
           [ "$FILENAME" != "$CLEAN_NAME" ] && mv "$FILENAME" "$CLEAN_NAME"
@@ -39,6 +32,7 @@ jobs:
           echo "MD5_HASH=$(md5sum "$CLEAN_NAME" | awk '{print $1}')" >> $GITHUB_ENV
 
       - name: Upload to Multi-Cloud
+        # Step ini hanya jalan jika download berhasil
         run: |
           echo "🚀 Uploading GoFile..."
           RESP_GO=$(curl -s -F "file=@${{ env.FILENAME }}" https://upload.gofile.io/uploadfile)
@@ -50,17 +44,18 @@ jobs:
           echo "DOWNLOAD_URL_GOFILE=$URL_GO" >> $GITHUB_ENV
           echo "DOWNLOAD_URL_CATBOX=$URL_CAT" >> $GITHUB_ENV
 
-      - name: Notify Telegram & Final Cleanup
+      - name: Notify Telegram Success
+        # HANYA kirim jika semua step di atas sukses (Bukan dicancel)
+        if: success()
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
+            -d chat_id="${{ secrets.CHAT_ID }}" \
+            -d parse_mode="HTML" \
+            -d text="<b>✅ Leech Berhasil!</b>%0A%0A📄 <b>File:</b> ${{ env.FILENAME }}%0A🔑 <b>MD5:</b> <code>${{ env.MD5_HASH }}</code>%0A%0A🚀 <b>GoFile:</b> ${{ env.DOWNLOAD_URL_GOFILE }}%0A📦 <b>Catbox:</b> ${{ env.DOWNLOAD_URL_CATBOX }}%0A%0A🧹 <i>Status: Disk dibersihkan.</i>"
+
+      - name: Deep Cleanup
+        # Jalankan pembersihan baik sukses, gagal, maupun dicancel
         if: always()
         run: |
-          # Kirim notifikasi sukses hanya jika proses berhasil
-          if [[ "${{ job.status }}" == "success" ]]; then
-            curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
-              -d chat_id="${{ secrets.CHAT_ID }}" \
-              -d parse_mode="HTML" \
-              -d text="<b>✅ Leech Berhasil!</b>%0A%0A📄 <b>File:</b> ${{ env.FILENAME }}%0A🔑 <b>MD5:</b> <code>${{ env.MD5_HASH }}</code>%0A%0A🚀 <b>GoFile:</b> ${{ env.DOWNLOAD_URL_GOFILE }}%0A📦 <b>Catbox:</b> ${{ env.DOWNLOAD_URL_CATBOX }}%0A%0A🧹 <i>Status: Disk dibersihkan.</i>"
-          fi
-
-          # POST-CLEANUP: Hapus file hasil download dan log untuk cegah overflow
           echo "🧹 Melakukan Deep Cleanup..."
           rm -rf * 2>/dev/null
