@@ -17,16 +17,16 @@ jobs:
           sudo apt-get install -y aria2
           URL="${{ github.event.client_payload.url }}"
           
-          # Daftar kandidat mirror kencang (Jepang, Irlandia, Jerman, Amerika)
-          MIRRORS=("jaist.dl" "heanet.dl" "netcologne.dl" "pilotfiber.dl")
-          BEST_URL="$URL" # Default ke link asli (Master)
+          # Daftar kandidat mirror kencang (Jepang, Irlandia, Jerman, Taiwan, Australia)
+          MIRRORS=("netcologne.dl" "jaist.dl" "heanet.dl" "nchc.dl" "internode.dl")
+          BEST_URL="$URL" 
           FOUND_FAST=false
 
           echo "🔍 Mengecek ketersediaan mirror kencang..."
           for MIRROR in "${MIRRORS[@]}"; do
             TEST_URL=$(echo "$URL" | sed "s/master.dl/$MIRROR/g")
             
-            # Cek apakah mirror merespon dengan cepat (timeout 2 detik)
+            # Cek respon mirror (timeout 2 detik)
             if curl -I -s --connect-timeout 2 -L "$TEST_URL" | grep -q "200 OK"; then
               echo "✅ Jalur kencang ditemukan: $MIRROR"
               BEST_URL="$TEST_URL"
@@ -36,13 +36,14 @@ jobs:
           done
 
           if [ "$FOUND_FAST" = true ]; then
-            echo "🚀 Memulai High-Speed Leech (Multi-Connection)..."
-            # Pakai 16 koneksi karena mirror ini mendukung
-            aria2c -x16 -s16 -k1M --max-connection-per-server=16 \
-            --user-agent="Mozilla/5.0" --header="Referer: https://sourceforge.net/" \
+            echo "🚀 Memulai High-Speed Leech (16 Connections)..."
+            # Menggunakan 16 koneksi untuk mirror yang mendukung (seperti netcologne)
+            aria2c -x16 -s16 -j16 -k1M --max-connection-per-server=16 \
+            --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" \
+            --header="Referer: https://sourceforge.net/" \
             --console-log-level=error --summary-interval=5 "$BEST_URL"
           else
-            echo "⚠️ Hanya tersedia Master Server. Memulai Stable Mode..."
+            echo "⚠️ Hanya tersedia Master Server. Menggunakan Mode Stabil (1 Connection)..."
             # Pakai 1 koneksi agar tidak kena 'Invalid range header' di server master
             aria2c -x1 -s1 -k1M --user-agent="Mozilla/5.0" \
             --header="Referer: https://sourceforge.net/" \
@@ -59,9 +60,16 @@ jobs:
 
       - name: Upload to GoFile
         run: |
+          echo "🚀 Memulai upload ke GoFile..."
           RESPONSE=$(curl -s -F "file=@${{ env.FILENAME }}" https://upload.gofile.io/uploadfile)
           DOWNLOAD_URL=$(echo "$RESPONSE" | jq -r '.data.downloadPage // empty')
-          echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
+          
+          if [[ -n "$DOWNLOAD_URL" && "$DOWNLOAD_URL" != "null" ]]; then
+             echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
+          else
+             echo "❌ Gagal upload. Respon: $RESPONSE"
+             exit 1
+          fi
 
       - name: Notify Telegram (Success)
         if: success()
