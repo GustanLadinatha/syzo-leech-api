@@ -10,25 +10,21 @@ jobs:
       - name: Notify Telegram (Process Start)
         run: |
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
-          -d "chat_id=${{ secrets.CHAT_ID }}&text=⚡ *Worker Started!*%0A sedang men-download dari SourceForge...&parse_mode=Markdown"
+          -d "chat_id=${{ secrets.CHAT_ID }}&text=⚡ *Worker Started!*%0A sedang men-download dari Master Server...&parse_mode=Markdown"
 
-      - name: Download File (Direct Mirror Mode)
+      - name: Download File (Stable Master Mode)
         run: |
           sudo apt-get install -y aria2
           URL="${{ github.event.client_payload.url }}"
           
-          # TRICK: Menghapus 'master.dl' dan menggantinya dengan 'downloads' 
-          # Ini adalah cara resmi agar SourceForge mencarikan mirror yang mendukung multi-koneksi secara otomatis
-          FINAL_URL=$(echo "$URL" | sed 's/master.dl/downloads/g')
+          echo "🚀 Mengunduh langsung dari: $URL"
           
-          echo "🚀 Menggunakan Jalur Direct: $FINAL_URL"
-          
-          # Kita pakai 10 koneksi (angka paling stabil agar tidak kena 'Invalid Range')
-          aria2c -x10 -s10 -j10 -k1M --max-connection-per-server=10 \
-          --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
+          # Gunakan -x1 -s1 agar tidak memicu 'Invalid range header' atau 403
+          # Kita tambahkan --stream-piece-selector=geom agar lebih stabil di server lambat
+          aria2c -x1 -s1 -k1M --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
           --header="Referer: https://sourceforge.net/" \
-          --connect-timeout=30 --timeout=30 --max-tries=20 \
-          --retry-wait=2 --console-log-level=error --summary-interval=5 "$FINAL_URL"
+          --connect-timeout=60 --timeout=60 --max-tries=50 \
+          --retry-wait=5 --console-log-level=error --summary-interval=10 "$URL"
           
           # Ambil nama file asli
           RAW_FILENAME=$(ls -p | grep -v / | head -n 1)
@@ -45,7 +41,7 @@ jobs:
           echo "MD5_HASH=$FILE_MD5" >> $GITHUB_ENV
           
           echo "FILENAME=$CLEAN_FILENAME" >> $GITHUB_ENV
-          echo "✅ Berhasil download & bersihkan: $CLEAN_FILENAME"
+          echo "✅ Selesai mengunduh: $CLEAN_FILENAME"
 
       - name: Upload to GoFile
         run: |
