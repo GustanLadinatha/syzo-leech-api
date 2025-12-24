@@ -95,7 +95,7 @@ def leech():
 
 @app.route('/cancel', methods=['POST', 'OPTIONS'])
 def cancel():
-    # WAJIB: Tangani preflight request dari browser
+    # WAJIB: Balas izin Browser (CORS Preflight)
     if request.method == 'OPTIONS':
         response = jsonify({"status": "OK"})
         response.headers.add("Access-Control-Allow-Origin", "*")
@@ -109,35 +109,33 @@ def cancel():
         file_name = data.get('file_name', 'Unknown File')
 
         if not run_id:
-            return jsonify({"status": "Error", "msg": "Run ID tidak ditemukan"}), 400
+            return jsonify({"status": "Error", "msg": "Run ID required"}), 400
 
         headers = {
             "Authorization": f"token {GITHUB_TOKEN}",
             "Accept": "application/vnd.github.v3+json"
         }
 
-        # 1. Matikan proses di GitHub
+        # 1. Kirim perintah CANCEL ke GitHub
         cancel_url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{GITHUB_REPO}/actions/runs/{run_id}/cancel"
-        # Gunakan timeout agar tidak gantung jika GitHub lambat
-        requests.post(cancel_url, headers=headers, timeout=10)
+        requests.post(cancel_url, headers=headers)
 
-        # 2. Kirim notifikasi pembatalan ke Telegram
+        # 2. Kirim Notifikasi ke Telegram
         pesan_cancel = (
             "❌ *PROSES DIBATALKAN*\n\n"
             f"📁 File: `{file_name}`\n"
             "⚠️ Status: _Aborted by User via Web_"
         )
         requests.post(f"https://api.telegram.org/bot{TOKEN_BOT}/sendMessage", json={
-            "chat_id": CHAT_ID, 
-            "text": pesan_cancel, 
-            "parse_mode": "Markdown"
-        }, timeout=10)
+            "chat_id": CHAT_ID, "text": pesan_cancel, "parse_mode": "Markdown"
+        })
 
-        return jsonify({"status": "Success", "msg": "Proses berhasil dihentikan"}), 200
+        return jsonify({"status": "Success", "msg": "Cancelled"}), 200
+
     except Exception as e:
-        print(f"Error pada cancel: {str(e)}")
         return jsonify({"status": "Error", "msg": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(debug=True)
+
 
