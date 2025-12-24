@@ -12,23 +12,23 @@ jobs:
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
           -d "chat_id=${{ secrets.CHAT_ID }}&text=⚡ *Worker Started!*%0A sedang men-download dari SourceForge...&parse_mode=Markdown"
 
-      - name: Download File (Fast Japan Mirror)
+      - name: Download File (Direct Mirror Mode)
         run: |
           sudo apt-get install -y aria2
           URL="${{ github.event.client_payload.url }}"
           
-          # OTOMATIS PINDAH KE MIRROR JEPANG (JAIST)
-          # Ini mencegah error 'Invalid range header' dan membuka limit kecepatan
-          FAST_URL=$(echo "$URL" | sed 's/master.dl/jaist.dl/g')
+          # TRICK: Menghapus 'master.dl' dan menggantinya dengan 'downloads' 
+          # Ini adalah cara resmi agar SourceForge mencarikan mirror yang mendukung multi-koneksi secara otomatis
+          FINAL_URL=$(echo "$URL" | sed 's/master.dl/downloads/g')
           
-          echo "🚀 Menggunakan Mirror Jepang: $FAST_URL"
+          echo "🚀 Menggunakan Jalur Direct: $FINAL_URL"
           
-          # Sekarang kita bisa pakai 16 koneksi dengan aman di mirror ini
-          aria2c -x16 -s16 -j16 -k1M --max-connection-per-server=16 \
+          # Kita pakai 10 koneksi (angka paling stabil agar tidak kena 'Invalid Range')
+          aria2c -x10 -s10 -j10 -k1M --max-connection-per-server=10 \
           --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
           --header="Referer: https://sourceforge.net/" \
           --connect-timeout=30 --timeout=30 --max-tries=20 \
-          --retry-wait=2 --console-log-level=error --summary-interval=5 "$FAST_URL"
+          --retry-wait=2 --console-log-level=error --summary-interval=5 "$FINAL_URL"
           
           # Ambil nama file asli
           RAW_FILENAME=$(ls -p | grep -v / | head -n 1)
@@ -45,7 +45,7 @@ jobs:
           echo "MD5_HASH=$FILE_MD5" >> $GITHUB_ENV
           
           echo "FILENAME=$CLEAN_FILENAME" >> $GITHUB_ENV
-          echo "✅ Berhasil download (JAIST) & bersihkan: $CLEAN_FILENAME"
+          echo "✅ Berhasil download & bersihkan: $CLEAN_FILENAME"
 
       - name: Upload to GoFile
         run: |
