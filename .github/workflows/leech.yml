@@ -12,15 +12,19 @@ jobs:
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
           -d "chat_id=${{ secrets.CHAT_ID }}&text=⚡ *Worker Started!*%0A sedang men-download dari SourceForge...&parse_mode=Markdown"
 
-      - name: Download File (Multi-Connection Speed)
+      - name: Download File (Optimized Aria2)
         run: |
           sudo apt-get install -y aria2
           URL="${{ github.event.client_payload.url }}"
           
-          # MENGGUNAKAN ARIA2C UNTUK SPEED MAKSIMAL
-          # -x16: Menggunakan 16 koneksi ke server
-          # -s16: Membagi file jadi 16 bagian untuk didownload barengan
-          aria2c -x16 -s16 -k1M --user-agent="Mozilla/5.0" --console-log-level=error --summary-interval=0 "$URL"
+          # Setelan Aman khusus untuk server Master SourceForge
+          # -x5: 5 koneksi (titik aman agar tidak error 'Invalid range header')
+          # --retry-wait=2: Jika putus, langsung coba lagi otomatis
+          aria2c -x5 -s5 -j5 -k1M --max-connection-per-server=5 \
+          --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
+          --header="Referer: https://sourceforge.net/" \
+          --connect-timeout=30 --timeout=30 --max-tries=20 \
+          --retry-wait=2 --console-log-level=error --summary-interval=5 "$URL"
           
           # Ambil nama file asli
           RAW_FILENAME=$(ls -p | grep -v / | head -n 1)
@@ -37,7 +41,7 @@ jobs:
           echo "MD5_HASH=$FILE_MD5" >> $GITHUB_ENV
           
           echo "FILENAME=$CLEAN_FILENAME" >> $GITHUB_ENV
-          echo "✅ Berhasil download (Aria2c) & bersihkan: $CLEAN_FILENAME"
+          echo "✅ Berhasil download & bersihkan: $CLEAN_FILENAME"
 
       - name: Upload to GoFile
         run: |
@@ -48,7 +52,7 @@ jobs:
           if [[ -n "$DOWNLOAD_URL" && "$DOWNLOAD_URL" != "null" ]]; then
             echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
           else
-            echo "❌ Gagal upload. Respon: $RESPONSE"
+            echo "❌ Gagal upload ke GoFile. Respon: $RESPONSE"
             exit 1
           fi
 
