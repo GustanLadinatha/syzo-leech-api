@@ -43,7 +43,10 @@ jobs:
             exit 1
           fi
           
-      - name: Notify Telegram (Finished)
+      - name: Notify Telegram (Success)
+        if: success()
         run: |
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELE_TOKEN }}/sendMessage" \
-          -d "chat_id=${{ secrets.TELE_ID }}&text=✅ *Leech Berhasil!*%0A%0A🔗 Link Download: ${{ env.FINAL_LINK }}&parse_mode=Markdown"
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
+               -d chat_id="${{ secrets.CHAT_ID }}" \
+               -d parse_mode="Markdown" \
+               -d text="✅ *Leech Berhasil!*%0A%0A🔗 *Link Download:* ${{ env.DOWNLOAD_URL }}"
