@@ -12,16 +12,16 @@ jobs:
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
           -d "chat_id=${{ secrets.CHAT_ID }}&text=⚡ *Worker Started!*%0A sedang men-download dari SourceForge...&parse_mode=Markdown"
 
-     - name: Download File from SourceForge
+      - name: Download File from SourceForge
         run: |
           sudo apt-get install -y aria2
           URL="${{ github.event.client_payload.url }}"
           
-          # Download dengan wget dan biarkan wget menentukan nama file aslinya
+          # Download dan gunakan nama asli dari server
           wget -U "Mozilla/5.0" --header="Referer: https://sourceforge.net/" --content-disposition "$URL"
           
-          # Mengambil nama file yang baru saja didownload (file paling baru di folder)
-          FILENAME=$(ls -t | head -n 1)
+          # Ambil nama file asli yang baru didownload
+          FILENAME=$(ls -p | grep -v / | head -n 1)
           echo "FILENAME=$FILENAME" >> $GITHUB_ENV
           echo "✅ Berhasil download: $FILENAME"
 
@@ -29,9 +29,10 @@ jobs:
         run: |
           echo "🚀 Memulai upload file: ${{ env.FILENAME }}"
           
-          # Upload menggunakan nama file asli
+          # Upload file dengan nama aslinya
           RESPONSE=$(curl -s -F "file=@${{ env.FILENAME }}" https://upload.gofile.io/uploadfile)
           
+          # Ambil link download
           DOWNLOAD_URL=$(echo "$RESPONSE" | jq -r '.data.downloadPage // empty')
           
           if [[ -n "$DOWNLOAD_URL" && "$DOWNLOAD_URL" != "null" ]]; then
@@ -41,26 +42,10 @@ jobs:
             exit 1
           fi
 
-      - name: Upload to GoFile
-        run: |
-          echo "🚀 Memulai upload anonim ke GoFile..."
-          # Langsung filter link downloadPage agar variabelnya pendek dan bersih
-          DOWNLOAD_URL=$(curl -s -F "file=@leech_file" https://upload.gofile.io/uploadfile | jq -r '.data.downloadPage // empty')
-          
-          # Gunakan tanda kutip untuk mencegah error "too many arguments"
-          if [ -n "$DOWNLOAD_URL" ] && [ "$DOWNLOAD_URL" != "null" ]; then
-            echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
-            echo "✅ Berhasil mendapatkan link!"
-          else
-            echo "❌ Gagal mendapatkan link download."
-            exit 1
-          fi
-
       - name: Notify Telegram (Success)
         if: success()
         run: |
-          # Kirim notifikasi dengan link yang sudah sangat bersih
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
             -d chat_id="${{ secrets.CHAT_ID }}" \
             -d parse_mode="HTML" \
-            -d text="<b>✅ Leech Berhasil!</b>%0A%0A🔗 <b>Link Download:</b> ${{ env.DOWNLOAD_URL }}"
+            -d text="<b>✅ Leech Berhasil!</b>%0A%0A📄 <b>File:</b> ${{ env.FILENAME }}%0A🔗 <b>Link:</b> ${{ env.DOWNLOAD_URL }}"
