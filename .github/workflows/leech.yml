@@ -64,11 +64,15 @@ jobs:
           -d "{\"run_id\": \"${{ github.run_id }}\", \"download_url\": \"$URL_TO_SEND\", \"filename\": \"${{ env.FILENAME }}\", \"md5\": \"$FILE_MD5\"}"
 
       - name: Notify Telegram Success
-        if: always()
+        if: success() # Hanya jalan jika semua proses (download & upload) BERHASIL
         run: |
-          # --- NOTIFIKASI TELEGRAM BERHASIL ---
-          # Menggunakan hardcode ID agar pasti terkirim tanpa tergantung secrets GitHub
           MESSAGE="✅ *Leech Completed*%0A📂 *File:* \`${{ env.FILENAME }}\` %0A🔑 *MD5:* \`${{ env.FILE_MD5 }}\` %0A🔗 [Download Link](${{ env.FINAL_URL }})"
-          
+          curl -s -X POST "https://api.telegram.org/bot8229203638:AAHI-0fu5NGv8kQmUm5ztd81gbOautvJBB4/sendMessage" \
+          -d "chat_id=-5089072043&text=$MESSAGE&parse_mode=Markdown"
+
+      - name: Notify Telegram Stopped/Failed
+        if: cancelled() || failure() # Jalan jika user tekan STOP atau ada error
+        run: |
+          MESSAGE="🛑 *Leech Stopped / Failed*%0A⚠️ Proses dihentikan oleh pengguna atau sistem.%0A🆔 Run ID: \`${{ github.run_id }}\`"
           curl -s -X POST "https://api.telegram.org/bot8229203638:AAHI-0fu5NGv8kQmUm5ztd81gbOautvJBB4/sendMessage" \
           -d "chat_id=-5089072043&text=$MESSAGE&parse_mode=Markdown"
