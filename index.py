@@ -18,9 +18,43 @@ GITHUB_USERNAME = "GustanLadinatha"
 GITHUB_REPO = "syzo-leech-api"
 GITHUB_TOKEN = os.getenv("GH_TOKEN")
 
+# Database sementara untuk menyimpan link download yang sudah jadi
+# Dalam produksi, sebaiknya gunakan Redis agar data tidak hilang saat server restart
+db_links = {}
+
 @app.route('/')
 def home():
-    return "Syzo API is Running! Route /leech and /cancel are active.", 200
+    return "Syzo API is Running! Route /leech, /cancel, and /get_link are active.", 200
+
+# --- [BARU] ROUTE UNTUK MENERIMA LINK DARI GITHUB WORKER ---
+@app.route('/update_link', methods=['POST'])
+def update_link():
+    try:
+        data = request.get_json(silent=True)
+        run_id = str(data.get('run_id'))
+        download_url = data.get('download_url')
+        
+        if run_id and download_url:
+            db_links[run_id] = {
+                "url": download_url,
+                "filename": data.get('filename', 'Unknown'),
+                "md5": data.get('md5', '-'),
+                "timestamp": time.time()
+            }
+            print(f"✅ Link tersimpan untuk Run ID: {run_id}")
+            return jsonify({"status": "Success"}), 200
+        return jsonify({"status": "Error", "msg": "Invalid Data"}), 400
+    except Exception as e:
+        return jsonify({"status": "Error", "msg": str(e)}), 500
+
+# --- [BARU] ROUTE UNTUK WEBSITE MENGAMBIL LINK ---
+@app.route('/get_link/<run_id>', methods=['GET'])
+def get_link(run_id):
+    # Mencari link berdasarkan Run ID
+    data = db_links.get(str(run_id))
+    if data:
+        return jsonify({"status": "Completed", "data": data}), 200
+    return jsonify({"status": "Processing", "msg": "Link belum tersedia"}), 404
 
 # --- ROUTE UNTUK MEMULAI LEECH ---
 @app.route('/leech', methods=['POST'])
@@ -66,9 +100,6 @@ def leech():
         response_gh = requests.post(dispatch_url, json=payload, headers=headers)
 
         if response_gh.status_code == 204:
-            # --- PERUBAHAN DISINI (SAFE START DELAY) ---
-            # Kita beri jeda 4 detik agar GitHub selesai mendaftarkan Run ID.
-            # Tanpa jeda ini, tombol cancel di web sering 'gagal' karena ID belum ada.
             time.sleep(4) 
             
             # Ambil Run ID terbaru
