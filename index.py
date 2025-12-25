@@ -34,29 +34,35 @@ def home():
 def update_link():
     try:
         data = request.get_json(silent=True)
+        if not data:
+            return jsonify({"status": "Error", "msg": "No data received"}), 400
+            
         run_id = str(data.get('run_id'))
         if run_id:
+            # Simpan data lengkap dari GitHub Worker
             db_links[run_id] = {
                 "url": data.get('download_url'),
-                "filename": data.get('filename', 'Unknown File'),
-                "md5": data.get('md5', '-')
+                "filename": data.get('filename', 'File Ready'),
+                "md5": data.get('md5', '-'),
+                "status": "Completed" # Tandai sebagai Completed untuk Frontend
             }
             return jsonify({"status": "Success"}), 200
-        return jsonify({"status": "Error"}), 400
-    except:
-        return jsonify({"status": "Error"}), 500
+        return jsonify({"status": "Error", "msg": "Missing run_id"}), 400
+    except Exception as e:
+        return jsonify({"status": "Error", "msg": str(e)}), 500
 
 @app.route('/get_link/<run_id>', methods=['GET', 'OPTIONS'])
 def get_link(run_id):
-    # Penanganan manual untuk browser 'preflight' request
     if request.method == 'OPTIONS':
         return '', 200
         
     data = db_links.get(str(run_id))
     if data:
+        # Jika data ditemukan, kirim ke frontend
         return jsonify({"status": "Completed", "data": data}), 200
     
-    # Kirim status Processing dengan HTTP 200 agar polling di JS tetap jalan
+    # Jika data belum masuk dari GitHub, kirim status Processing
+    # HTTP 200 tetap digunakan agar browser tidak menampilkan error merah
     return jsonify({"status": "Processing"}), 200
 
 @app.route('/leech', methods=['POST'])
@@ -70,20 +76,31 @@ def leech():
         tz_jkt = pytz.timezone('Asia/Jakarta')
         waktu = datetime.now(tz_jkt).strftime('%H:%M:%S')
         requests.post(f"https://api.telegram.org/bot{TOKEN_BOT}/sendMessage", json={
-            "chat_id": CHAT_ID, "text": f"🚀 *New Request*\n🔗 `{url_target}`\n⏰ {waktu}", "parse_mode": "Markdown"
+            "chat_id": CHAT_ID, 
+            "text": f"🚀 *New Request*\n🔗 `{url_target}`\n⏰ {waktu}", 
+            "parse_mode": "Markdown"
         })
 
         # Trigger GitHub
         headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
-        res_gh = requests.post(f"https://api.github.com/repos/{GITHUB_USERNAME}/{GITHUB_REPO}/dispatches", 
-                               json={"event_type": "start-leech", "client_payload": {"url": url_target}}, headers=headers)
+        res_gh = requests.post(
+            f"https://api.github.com/repos/{GITHUB_USERNAME}/{GITHUB_REPO}/dispatches", 
+            json={"event_type": "start-leech", "client_payload": {"url": url_target}}, 
+            headers=headers
+        )
 
         if res_gh.status_code == 204:
-            time.sleep(4)
-            run_data = requests.get(f"https://api.github.com/repos/{GITHUB_USERNAME}/{GITHUB_REPO}/actions/runs?per_page=1", headers=headers).json()
+            # Tunggu sebentar agar GitHub sempat membuat Run ID
+            time.sleep(5) 
+            run_data = requests.get(
+                f"https://api.github.com/repos/{GITHUB_USERNAME}/{GITHUB_REPO}/actions/runs?per_page=1", 
+                headers=headers
+            ).json()
+            
             rid = run_data['workflow_runs'][0]['id'] if run_data.get('workflow_runs') else None
             return jsonify({"status": "Success", "run_id": rid}), 200
-        return jsonify({"status": "Error"}), 500
+            
+        return jsonify({"status": "Error", "gh_status": res_gh.status_code}), 500
     except Exception as e:
         return jsonify({"status": "Error", "msg": str(e)}), 500
 
@@ -97,4 +114,3 @@ def cancel():
         return jsonify({"status": "Success"}), 200
     except:
         return jsonify({"status": "Error"}), 500
-
