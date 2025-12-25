@@ -15,11 +15,9 @@ jobs:
       # --- LOGIKA SAFE START: JEDA & CEK CANCEL INSTAN ---
       - name: Safe Start Delay & Check
         run: |
-          # Beri jeda 3 detik agar sinkron dengan perintah cancel dari web
           echo "Warming up and checking for early cancellation..."
           sleep 3
           
-          # Cek ke API GitHub apakah proses ini sudah diminta cancel oleh User
           STATUS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }} \
             | jq -r '.status')
@@ -49,11 +47,11 @@ jobs:
           echo "MD5_HASH=$(md5sum "$CLEAN_NAME" | awk '{print $1}')" >> $GITHUB_ENV
 
       - name: Upload to Multi-Cloud
-        # Tetap menggunakan if: success() agar tidak upload jika dicancel
         if: success()
         run: |
           echo "🚀 Uploading GoFile..."
-          RESP_GO=$(curl -s -F "file=@${{ env.FILENAME }}" https://upload.gofile.io/uploadfile)
+          # Menggunakan API terbaru GoFile untuk upload
+          RESP_GO=$(curl -s -F "file=@${{ env.FILENAME }}" https://store1.gofile.io/contents/uploadfile)
           URL_GO=$(echo "$RESP_GO" | jq -r '.data.downloadPage // empty')
           
           echo "🚀 Uploading Catbox..."
@@ -62,8 +60,20 @@ jobs:
           echo "DOWNLOAD_URL_GOFILE=$URL_GO" >> $GITHUB_ENV
           echo "DOWNLOAD_URL_CATBOX=$URL_CAT" >> $GITHUB_ENV
 
+      # --- TAMBAHAN: KIRIM LINK BALIK KE WEBSITE VIA VERCEL ---
+      - name: Notify Vercel Result
+        if: success()
+        run: |
+          curl -s -X POST "https://syzo-leech-api.vercel.app/update_link" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "run_id": "${{ github.run_id }}",
+            "download_url": "${{ env.DOWNLOAD_URL_GOFILE }}",
+            "filename": "${{ env.FILENAME }}",
+            "md5": "${{ env.MD5_HASH }}"
+          }'
+
       - name: Notify Telegram Success
-        # Hanya kirim jika benar-benar sukses (Bukan dicancel)
         if: success()
         run: |
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
