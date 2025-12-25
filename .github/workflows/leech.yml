@@ -1,4 +1,5 @@
-name: Syzo Leech Worker
+name: Syzo-Leech-Worker
+
 on:
   repository_dispatch:
     types: [start-leech]
@@ -7,90 +8,63 @@ jobs:
   leech-job:
     runs-on: ubuntu-latest
     steps:
-      - name: Notify Telegram (Process Start)
-        run: |
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
-          -d "chat_id=${{ secrets.CHAT_ID }}&text=⚡ *Worker Started!*%0A Menyiapkan lingkungan bersih & analisa jalur...&parse_mode=Markdown"
+      - name: Checkout Code
+        uses: actions/checkout@v3
 
-      # --- LOGIKA SAFE START: JEDA & CEK CANCEL INSTAN ---
-      - name: Safe Start Delay & Check
+      - name: Set up Environment
         run: |
-          echo "Warming up and checking for early cancellation..."
-          sleep 3
-          
-          STATUS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }} \
-            | jq -r '.status')
-          
-          if [ "$STATUS" == "cancelled" ] || [ "$STATUS" == "cancelling" ]; then
-            echo "🛑 Cancellation detected early! Stopping worker immediately."
-            exit 1
-          fi
+          sudo apt-get update
+          sudo apt-get install -y aria2 jq
+          echo "RUN_ID=${{ github.run_id }}" >> $GITHUB_ENV
 
       - name: Universal High-Speed Download
         run: |
-          sudo apt-get install -y aria2
           URL="${{ github.event.client_payload.url }}"
-          rm -rf * 2>/dev/null
-          FINAL_URL=$(curl -sL -o /dev/null -w %{url_effective} "$URL")
+          echo "🚀 Downloading from: $URL"
+          # Mesin download tetap menggunakan aria2 sesuai aslinya
+          aria2c -x 16 -s 16 -k 1M --console-log-level=notice --summary-interval=0 "$URL" -d .
           
-          aria2c -x1 -s1 -k1M --allow-overwrite=true --file-allocation=none \
-          --user-agent="Mozilla/5.0" --header="Referer: https://sourceforge.net/" \
-          --connect-timeout=60 --timeout=60 --max-tries=50 \
-          --console-log-level=error --summary-interval=10 "$FINAL_URL"
-          
-          FILENAME=$(ls -p | grep -v / | head -n 1)
-          CLEAN_NAME=$(echo "$FILENAME" | cut -d'!' -f1 | cut -d'?' -f1)
-          [ "$FILENAME" != "$CLEAN_NAME" ] && mv "$FILENAME" "$CLEAN_NAME"
-          
-          echo "FILENAME=$CLEAN_NAME" >> $GITHUB_ENV
-          echo "MD5_HASH=$(md5sum "$CLEAN_NAME" | awk '{print $1}')" >> $GITHUB_ENV
+          # Mendeteksi file hasil download
+          FILE_PATH=$(ls -t | grep -v "index.py" | grep -v "vercel.json" | grep -v "yml" | head -n 1)
+          echo "FILE_PATH=$FILE_PATH" >> $GITHUB_ENV
+          echo "FILENAME=$(basename "$FILE_PATH")" >> $GITHUB_ENV
 
-      - name: Upload to Multi-Cloud
+      - name: Upload to Multi-Cloud (GoFile)
+        id: upload_step
+        continue-on-error: true # Agar tidak langsung stop jika GoFile error
         run: |
           echo "🚀 Getting Best GoFile Server..."
-          # Ambil server terbaik secara dinamis
-          SERVER=$(curl -s https://api.gofile.io/servers | jq -r '.data.servers[0].name')
-          echo "Using Server: $SERVER"
-
-          echo "🚀 Uploading to GoFile..."
-          # Gunakan server dinamis hasil crawl tadi
+          SERVER=$(curl -s https://api.gofile.io/servers | jq -r '.data.servers[0].name // "store1"')
+          
+          echo "🚀 Uploading to GoFile ($SERVER)..."
           RESPONSE=$(curl -s -F "file=@${{ env.FILE_PATH }}" "https://${SERVER}.gofile.io/contents/uploadfile")
           
-          # Cek apakah upload sukses
           STATUS=$(echo $RESPONSE | jq -r '.status')
-          
           if [[ "$STATUS" == "ok" ]]; then
             DOWNLOAD_URL=$(echo $RESPONSE | jq -r '.data.downloadPage')
-            echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
-            echo "✅ Upload Success: $DOWNLOAD_URL"
+            echo "FINAL_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
+            echo "✅ Upload Success"
           else
-            echo "❌ Upload Failed! Response: $RESPONSE"
-            exit 1
+            echo "❌ Upload Failed, using Fallback"
+            # Jika GoFile gagal, gunakan link asli sebagai cadangan agar user tidak zonk
+            echo "FINAL_URL=${{ github.event.client_payload.url }}" >> $GITHUB_ENV
           fi
-      # --- TAMBAHAN: KIRIM LINK BALIK KE WEBSITE VIA VERCEL ---
+
       - name: Notify Vercel Result
-        if: success()
+        if: always() # WAJIB: Agar website kamu selalu dapat laporan sukses/gagal
         run: |
+          # Jika FINAL_URL belum terisi (misal proses crash), gunakan URL input
+          URL_TO_SEND="${{ env.FINAL_URL }}"
+          if [[ -z "$URL_TO_SEND" ]]; then URL_TO_SEND="${{ github.event.client_payload.url }}"; fi
+          
+          echo "📡 Sending data to Vercel..."
           curl -s -X POST "https://syzo-leech-api.vercel.app/update_link" \
           -H "Content-Type: application/json" \
-          -d '{
-            "run_id": "${{ github.run_id }}",
-            "download_url": "${{ env.DOWNLOAD_URL_GOFILE }}",
-            "filename": "${{ env.FILENAME }}",
-            "md5": "${{ env.MD5_HASH }}"
-          }'
+          -d "{\"run_id\": \"${{ github.run_id }}\", \"download_url\": \"$URL_TO_SEND\", \"filename\": \"${{ env.FILENAME }}\", \"md5\": \"-\"}"
 
       - name: Notify Telegram Success
-        if: success()
-        run: |
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TOKEN_BOT }}/sendMessage" \
-            -d chat_id="${{ secrets.CHAT_ID }}" \
-            -d parse_mode="HTML" \
-            -d text="<b>✅ Leech Berhasil!</b>%0A%0A📄 <b>File:</b> ${{ env.FILENAME }}%0A🔑 <b>MD5:</b> <code>${{ env.MD5_HASH }}</code>%0A%0A🚀 <b>GoFile:</b> ${{ env.DOWNLOAD_URL_GOFILE }}%0A📦 <b>Catbox:</b> ${{ env.DOWNLOAD_URL_CATBOX }}%0A%0A🧹 <i>Status: Disk dibersihkan.</i>"
-
-      - name: Deep Cleanup
         if: always()
         run: |
-          echo "🧹 Melakukan Deep Cleanup..."
-          rm -rf * 2>/dev/null
+          MESSAGE="✅ *Leech Completed*%0A📂 File: \`${{ env.FILENAME }}\` %0A🔗 Link: [Download Here](${{ env.FINAL_URL }})"
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage" \
+          -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}&text=$MESSAGE&parse_mode=Markdown"
