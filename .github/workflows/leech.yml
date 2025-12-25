@@ -22,77 +22,51 @@ jobs:
           URL="${{ github.event.client_payload.url }}"
           SELECTED_MIRROR="Direct/Original"
           
-          # --- LOGIKA CERDAS: AUTO-MIRROR IMPROVED ---
           if [[ "$URL" == *"sourceforge.net"* ]]; then
-            echo "🔍 SourceForge detected. Analyzing link structure..."
-            
-            # Cara baru mengambil path project & file yang lebih aman (anti-error)
+            echo "🔍 SourceForge detected. Analyzing link..."
             PROJ_PATH=$(echo "$URL" | sed -n 's/.*projects\/\([^\/]*\).*/\1/p')
-            FILE_PATH=$(echo "$URL" | sed -e 's/.*files\///' -e 's/\/download.*//' -e 's/?.*//')
+            FILE_PATH_SF=$(echo "$URL" | sed -e 's/.*files\///' -e 's/\/download.*//' -e 's/?.*//')
             
-            if [ ! -z "$PROJ_PATH" ] && [ ! -z "$FILE_PATH" ]; then
-              echo "📡 Fetching dynamic mirror list for: $PROJ_PATH"
-              # Mengambil daftar mirror dengan proteksi jika API lambat
-              MIRROR_LIST=$(curl -s -m 5 "https://sourceforge.net/settings/mirror_choices?projectname=${PROJ_PATH}&filename=${FILE_PATH}" | grep -oP '(?<=id=").*?(?=")' | head -n 10 || echo "")
-              
+            if [ ! -z "$PROJ_PATH" ] && [ ! -z "$FILE_PATH_SF" ]; then
+              MIRROR_LIST=$(curl -s -m 5 "https://sourceforge.net/settings/mirror_choices?projectname=${PROJ_PATH}&filename=${FILE_PATH_SF}" | grep -oP '(?<=id=").*?(?=")' | head -n 10 || echo "")
               if [ ! -z "$MIRROR_LIST" ]; then
                 for m in $MIRROR_LIST; do
-                  # Bersihkan URL dari parameter lama untuk ditukar mirror baru
-                  CLEAN_URL="https://downloads.sourceforge.net/project/${PROJ_PATH}/${FILE_PATH}"
+                  CLEAN_URL="https://downloads.sourceforge.net/project/${PROJ_PATH}/${FILE_PATH_SF}"
                   TEST_URL="${CLEAN_URL}?use_mirror=$m"
-                  
-                  echo -n "⚡ Testing mirror [$m]... "
                   if curl -o /dev/null -sI -f -m 2 "$TEST_URL"; then
                     URL="$TEST_URL"
                     SELECTED_MIRROR="$m"
-                    echo "🔥 SELECTED"
                     break
-                  else
-                    echo "❌ SKIP"
                   fi
                 done
               fi
             fi
           fi
           echo "SELECTED_MIRROR=$SELECTED_MIRROR" >> $GITHUB_ENV
-          # -------------------------------------------
 
-          echo "🚀 Final Download URL: $URL"
+          aria2c --console-log-level=notice --summary-interval=1 -x 16 -s 16 -j 16 -k 1M --max-connection-per-server=16 --buffer-size=2M --user-agent="Mozilla/5.0" "$URL" -d . > download_log.txt 2>&1 || true
           
-          # Aria2 tetap jalan meskipun scraper gagal (Universal Fallback)
-          aria2c --console-log-level=notice \
-                 --summary-interval=1 \
-                 --max-connection-per-server=16 \
-                 --split=16 \
-                 --min-split-size=1M \
-                 --buffer-size=2M \
-                 --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" \
-                 "$URL" -d . > download_log.txt 2>&1 || true
-          
-          # Perbaikan pengambilan speed agar tidak error jika log kosong
           AVG_SPEED=$(tail -n 20 download_log.txt | grep "DL:" | tail -n 1 | grep -oP 'DL:\K.*?(?= )' || echo "N/A")
           echo "AVG_SPEED=$AVG_SPEED" >> $GITHUB_ENV
 
-          # Pastikan hanya mengambil file hasil download, bukan log
-          FILE_PATH=$(ls -t | grep -vE "index.py|vercel.json|yml|download_log.txt" | head -n 1)
-          echo "FILE_PATH=$FILE_PATH" >> $GITHUB_ENV
-          echo "FILENAME=$(basename "$FILE_PATH")" >> $GITHUB_ENV
+          # PENENTUAN FILE AKURAT
+          FINAL_FILE=$(find . -maxdepth 1 -type f -size +1M -not -path '*/.*' | head -n 1)
+          if [ -z "$FINAL_FILE" ]; then
+            FINAL_FILE=$(ls -t | grep -vE "index.py|vercel.json|yml|download_log.txt|requirements.txt" | head -n 1)
+          fi
+          echo "FILE_PATH=$FINAL_FILE" >> $GITHUB_ENV
+          echo "FILENAME=$(basename "$FINAL_FILE")" >> $GITHUB_ENV
 
       - name: Upload to Multi-Cloud (GoFile)
         id: upload_step
         continue-on-error: true 
         run: |
-          echo "🚀 Getting Best GoFile Server..."
           SERVER_RESP=$(curl -s https://api.gofile.io/servers)
           SERVER=$(echo $SERVER_RESP | jq -r '.data.servers[0].name // "store1"')
-          
-          echo "🚀 Uploading to GoFile ($SERVER)..."
           RESPONSE=$(curl --retry 3 -s -F "file=@${{ env.FILE_PATH }}" "https://${SERVER}.gofile.io/contents/uploadfile")
-          
           STATUS=$(echo $RESPONSE | jq -r '.status // "error"')
           if [[ "$STATUS" == "ok" ]]; then
-            DOWNLOAD_URL=$(echo $RESPONSE | jq -r '.data.downloadPage')
-            echo "FINAL_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
+            echo "FINAL_URL=$(echo $RESPONSE | jq -r '.data.downloadPage')" >> $GITHUB_ENV
             echo "UPLOAD_RESULT=SUCCESS" >> $GITHUB_ENV
           else
             echo "FINAL_URL=${{ github.event.client_payload.url }}" >> $GITHUB_ENV
@@ -103,37 +77,10 @@ jobs:
         if: always()
         run: |
           FILE_MD5=$(md5sum "${{ env.FILE_PATH }}" | awk '{print $1}')
-          echo "FILE_MD5=$FILE_MD5" >> $GITHUB_ENV
-          
-          URL_TO_SEND="${{ env.FINAL_URL }}"
-          if [[ -z "$URL_TO_SEND" ]]; then URL_TO_SEND="${{ github.event.client_payload.url }}"; fi
-          
-          curl -s -X POST "https://syzo-leech-api.vercel.app/update_link" \
-          -H "Content-Type: application/json" \
-          -d "{\"run_id\": \"${{ github.run_id }}\", \"download_url\": \"$URL_TO_SEND\", \"filename\": \"${{ env.FILENAME }}\", \"md5\": \"$FILE_MD5\"}"
+          curl -s -X POST "https://syzo-leech-api.vercel.app/update_link" -H "Content-Type: application/json" -d "{\"run_id\": \"${{ github.run_id }}\", \"download_url\": \"${{ env.FINAL_URL }}\", \"filename\": \"${{ env.FILENAME }}\", \"md5\": \"$FILE_MD5\"}"
 
       - name: Notify Telegram Result
         if: always()
         run: |
-          if [[ "${{ job.status }}" == "success" ]]; then
-            if [[ "${{ env.UPLOAD_RESULT }}" == "SUCCESS" ]]; then
-              STATUS_EMOJI="✅"
-              STATUS_TEXT="Leech Completed"
-              STORAGE="Cloud: GoFile"
-            else
-              STATUS_EMOJI="⚠️"
-              STATUS_TEXT="Leech Completed (Fallback)"
-              STORAGE="Source: Original Link"
-            fi
-            
-            # Format pesan dengan info Kecepatan dan Mirror
-            MESSAGE="${STATUS_EMOJI} *${STATUS_TEXT}*%0A📂 *File:* \`${{ env.FILENAME }}\` %0A🚀 *Speed:* \`${{ env.AVG_SPEED }}\` %0A📡 *Source:* \`${{ env.SELECTED_MIRROR }}\` %0A📦 *Storage:* ${STORAGE}%0A🔑 *MD5:* \`${{ env.FILE_MD5 }}\` %0A🔗 [Download Link](${{ env.FINAL_URL }})"
-          
-          elif [[ "${{ job.status }}" == "cancelled" ]]; then
-            MESSAGE="🛑 *Leech Stopped*%0A⚠️ Proses dihentikan oleh pengguna."
-          else
-            MESSAGE="❌ *Leech Failed*%0A⚠️ Terjadi error saat proses download/upload."
-          fi
-          
-          curl -s -X POST "https://api.telegram.org/bot8229203638:AAHI-0fu5NGv8kQmUm5ztd81gbOautvJBB4/sendMessage" \
-          -d "chat_id=-5089072043&text=$MESSAGE&parse_mode=Markdown"
+          MESSAGE="✅ *Leech Completed*%0A📂 *File:* \`${{ env.FILENAME }}\` %0A🚀 *Speed:* \`${{ env.AVG_SPEED }}\` %0A📡 *Source:* \`${{ env.SELECTED_MIRROR }}\` %0A🔗 [Download Link](${{ env.FINAL_URL }})"
+          curl -s -X POST "https://api.telegram.org/bot8229203638:AAHI-0fu5NGv8kQmUm5ztd81gbOautvJBB4/sendMessage" -d "chat_id=-5089072043&text=$MESSAGE&parse_mode=Markdown"
