@@ -22,17 +22,15 @@ jobs:
           URL="${{ github.event.client_payload.url }}"
           echo "🚀 Memulai High-Speed Turbo Download..."
           
-          # Optimasi Aria2 untuk Kecepatan Maksimal
-          aria2c --console-log-level=notice \
+          # Kita kurangi split sedikit ke 16 agar server tidak menolak (Invalid range)
+          # Tapi kita naikkan buffer untuk menjaga kecepatan tetap maksimal
+          aria2c --console-log-level=warn \
                  --summary-interval=1 \
-                 -x 16 \
-                 -s 16 \
-                 -j 16 \
-                 -k 1M \
-                 --split=32 \
                  --max-connection-per-server=16 \
+                 --split=16 \
                  --min-split-size=1M \
-                 --stream-piece-selector=random \
+                 --max-overall-download-limit=0 \
+                 --buffer-size=1M \
                  --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36" \
                  "$URL" -d .
           
