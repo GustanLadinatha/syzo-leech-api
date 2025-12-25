@@ -20,9 +20,21 @@ jobs:
       - name: Universal High-Speed Download
         run: |
           URL="${{ github.event.client_payload.url }}"
-          echo "🚀 Downloading from: $URL"
-          # Mesin download utama tetap aria2
-          aria2c -x 16 -s 16 -k 1M --console-log-level=notice --summary-interval=0 "$URL" -d .
+          echo "🚀 Memulai High-Speed Turbo Download..."
+          
+          # Optimasi Aria2 untuk Kecepatan Maksimal
+          aria2c --console-log-level=notice \
+                 --summary-interval=1 \
+                 -x 16 \
+                 -s 16 \
+                 -j 16 \
+                 -k 1M \
+                 --split=32 \
+                 --max-connection-per-server=16 \
+                 --min-split-size=1M \
+                 --stream-piece-selector=random \
+                 --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36" \
+                 "$URL" -d .
           
           FILE_PATH=$(ls -t | grep -v "index.py" | grep -v "vercel.json" | grep -v "yml" | head -n 1)
           echo "FILE_PATH=$FILE_PATH" >> $GITHUB_ENV
