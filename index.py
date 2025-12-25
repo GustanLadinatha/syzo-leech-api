@@ -46,14 +46,17 @@ def update_link():
     except:
         return jsonify({"status": "Error"}), 500
 
-# FIX 404: Route ini sekarang selalu kirim 200 OK agar konsol JS tidak merah
-@app.route('/get_link/<run_id>', methods=['GET'])
+@app.route('/get_link/<run_id>', methods=['GET', 'OPTIONS'])
 def get_link(run_id):
+    # Penanganan manual untuk browser 'preflight' request
+    if request.method == 'OPTIONS':
+        return '', 200
+        
     data = db_links.get(str(run_id))
     if data:
         return jsonify({"status": "Completed", "data": data}), 200
     
-    # Kirim status Processing tapi dengan HTTP 200 (Bukan 404)
+    # Kirim status Processing dengan HTTP 200 agar polling di JS tetap jalan
     return jsonify({"status": "Processing"}), 200
 
 @app.route('/leech', methods=['POST'])
@@ -94,3 +97,4 @@ def cancel():
         return jsonify({"status": "Success"}), 200
     except:
         return jsonify({"status": "Error"}), 500
+
