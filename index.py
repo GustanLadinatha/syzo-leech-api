@@ -8,8 +8,11 @@ import pytz
 
 app = Flask(__name__)
 
-# Mengaktifkan CORS agar bisa diakses dari localhost maupun domain web
-CORS(app, resources={r"/*": {"origins": "*"}})
+CORS(app, resources={r"/*": {
+    "origins": "*",
+    "methods": ["GET", "POST", "OPTIONS"],
+    "allow_headers": ["Content-Type"]
+}})
 
 # --- KONFIGURASI ---
 TOKEN_BOT = "8229203638:AAHI-0fu5NGv8kQmUm5ztd81gbOautvJBB4"
@@ -47,14 +50,14 @@ def update_link():
     except Exception as e:
         return jsonify({"status": "Error", "msg": str(e)}), 500
 
-# --- [BARU] ROUTE UNTUK WEBSITE MENGAMBIL LINK ---
 @app.route('/get_link/<run_id>', methods=['GET'])
 def get_link(run_id):
-    # Mencari link berdasarkan Run ID
     data = db_links.get(str(run_id))
     if data:
         return jsonify({"status": "Completed", "data": data}), 200
-    return jsonify({"status": "Processing", "msg": "Link belum tersedia"}), 404
+    
+    # Kirim 200 OK tapi status "Processing" agar browser tidak menganggap ini error merah
+    return jsonify({"status": "Processing", "msg": "Link belum tersedia"}), 200
 
 # --- ROUTE UNTUK MEMULAI LEECH ---
 @app.route('/leech', methods=['POST'])
@@ -161,3 +164,4 @@ def cancel():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
