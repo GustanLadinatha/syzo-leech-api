@@ -10,7 +10,7 @@
     {
       "src": "/leech",
       "dest": "index.py",
-      "headers": { 
+      "headers": {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "POST,OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type"
@@ -19,11 +19,33 @@
     {
       "src": "/cancel",
       "dest": "index.py",
-      "headers": { 
+      "headers": {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "POST,OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type"
       }
+    },
+    {
+      "src": "/get_link/(.*)",
+      "dest": "index.py",
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET,OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type"
+      }
+    },
+    {
+      "src": "/update_link",
+      "dest": "index.py",
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST,OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type"
+      }
+    },
+    {
+      "src": "/(.*)",
+      "dest": "index.py"
     }
   ]
 }
