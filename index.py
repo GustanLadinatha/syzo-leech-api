@@ -8,10 +8,11 @@ import pytz
 
 app = Flask(__name__)
 
+# FIX CORS: Memberikan izin penuh agar tidak diblokir browser saat testing lokal
 CORS(app, resources={r"/*": {
     "origins": "*",
     "methods": ["GET", "POST", "OPTIONS"],
-    "allow_headers": ["Content-Type"]
+    "allow_headers": ["Content-Type", "Authorization"]
 }})
 
 # --- KONFIGURASI ---
@@ -21,147 +22,75 @@ GITHUB_USERNAME = "GustanLadinatha"
 GITHUB_REPO = "syzo-leech-api"
 GITHUB_TOKEN = os.getenv("GH_TOKEN")
 
-# Database sementara untuk menyimpan link download yang sudah jadi
-# Dalam produksi, sebaiknya gunakan Redis agar data tidak hilang saat server restart
+# Database sementara di memori server
 db_links = {}
 
 @app.route('/')
 def home():
-    return "Syzo API is Running! Route /leech, /cancel, and /get_link are active.", 200
+    return "Syzo API is Online!", 200
 
-# --- [BARU] ROUTE UNTUK MENERIMA LINK DARI GITHUB WORKER ---
+# ROUTE UNTUK MENERIMA LINK DARI GITHUB
 @app.route('/update_link', methods=['POST'])
 def update_link():
     try:
         data = request.get_json(silent=True)
         run_id = str(data.get('run_id'))
-        download_url = data.get('download_url')
-        
-        if run_id and download_url:
+        if run_id:
             db_links[run_id] = {
-                "url": download_url,
-                "filename": data.get('filename', 'Unknown'),
-                "md5": data.get('md5', '-'),
-                "timestamp": time.time()
+                "url": data.get('download_url'),
+                "filename": data.get('filename', 'Unknown File'),
+                "md5": data.get('md5', '-')
             }
-            print(f"✅ Link tersimpan untuk Run ID: {run_id}")
             return jsonify({"status": "Success"}), 200
-        return jsonify({"status": "Error", "msg": "Invalid Data"}), 400
-    except Exception as e:
-        return jsonify({"status": "Error", "msg": str(e)}), 500
+        return jsonify({"status": "Error"}), 400
+    except:
+        return jsonify({"status": "Error"}), 500
 
+# FIX 404: Route ini sekarang selalu kirim 200 OK agar konsol JS tidak merah
 @app.route('/get_link/<run_id>', methods=['GET'])
 def get_link(run_id):
     data = db_links.get(str(run_id))
     if data:
         return jsonify({"status": "Completed", "data": data}), 200
     
-    # Kirim 200 OK tapi status "Processing" agar browser tidak menganggap ini error merah
-    return jsonify({"status": "Processing", "msg": "Link belum tersedia"}), 200
+    # Kirim status Processing tapi dengan HTTP 200 (Bukan 404)
+    return jsonify({"status": "Processing"}), 200
 
-# --- ROUTE UNTUK MEMULAI LEECH ---
 @app.route('/leech', methods=['POST'])
 def leech():
     try:
-        print("Request Leech masuk!") 
         data = request.get_json(silent=True)
-        if not data:
-             return jsonify({"status": "Error", "msg": "JSON data tidak terbaca"}), 400
-             
         url_target = data.get('url')
-        if not url_target:
-            return jsonify({"status": "Error", "msg": "URL tidak ditemukan"}), 400
+        if not url_target: return jsonify({"status": "Error"}), 400
 
-        # 1. Kirim Notifikasi Awal ke Telegram
+        # Notif Telegram
         tz_jkt = pytz.timezone('Asia/Jakarta')
-        waktu_sekarang = datetime.now(tz_jkt).strftime('%H:%M:%S')
-        
-        pesan_awal = (
-            "🚀 *New Request Received*\n\n"
-            f"🔗 Target: `{url_target}`\n"
-            f"⏰ Time: {waktu_sekarang} WIB\n\n"
-            "⏳ _Menghubungi GitHub Worker..._"
-        )
-        
+        waktu = datetime.now(tz_jkt).strftime('%H:%M:%S')
         requests.post(f"https://api.telegram.org/bot{TOKEN_BOT}/sendMessage", json={
-            "chat_id": CHAT_ID, 
-            "text": pesan_awal,
-            "parse_mode": "Markdown"
+            "chat_id": CHAT_ID, "text": f"🚀 *New Request*\n🔗 `{url_target}`\n⏰ {waktu}", "parse_mode": "Markdown"
         })
 
-        # 2. Trigger GitHub Actions Dispatch
-        dispatch_url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{GITHUB_REPO}/dispatches"
-        headers = {
-            "Authorization": f"token {GITHUB_TOKEN}",
-            "Accept": "application/vnd.github.v3+json"
-        }
-        payload = {
-            "event_type": "start-leech",
-            "client_payload": {"url": url_target}
-        }
-        
-        response_gh = requests.post(dispatch_url, json=payload, headers=headers)
+        # Trigger GitHub
+        headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
+        res_gh = requests.post(f"https://api.github.com/repos/{GITHUB_USERNAME}/{GITHUB_REPO}/dispatches", 
+                               json={"event_type": "start-leech", "client_payload": {"url": url_target}}, headers=headers)
 
-        if response_gh.status_code == 204:
-            time.sleep(4) 
-            
-            # Ambil Run ID terbaru
-            runs_url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{GITHUB_REPO}/actions/runs?per_page=1"
-            run_data = requests.get(runs_url, headers=headers).json()
-            
-            run_id = None
-            if run_data.get('workflow_runs'):
-                run_id = run_data['workflow_runs'][0]['id']
-            
-            return jsonify({
-                "status": "Success", 
-                "msg": "Worker is warming up...",
-                "run_id": run_id
-            }), 200
-        else:
-            return jsonify({"status": "Error", "msg": f"Gagal kontak GitHub: {response_gh.text}"}), 500
-            
+        if res_gh.status_code == 204:
+            time.sleep(4)
+            run_data = requests.get(f"https://api.github.com/repos/{GITHUB_USERNAME}/{GITHUB_REPO}/actions/runs?per_page=1", headers=headers).json()
+            rid = run_data['workflow_runs'][0]['id'] if run_data.get('workflow_runs') else None
+            return jsonify({"status": "Success", "run_id": rid}), 200
+        return jsonify({"status": "Error"}), 500
     except Exception as e:
         return jsonify({"status": "Error", "msg": str(e)}), 500
 
-# --- ROUTE UNTUK MEMBATALKAN LEECH ---
 @app.route('/cancel', methods=['POST'])
 def cancel():
     try:
-        print("Request Cancel masuk!")
         data = request.get_json(silent=True)
-        run_id = data.get('run_id')
-        file_name = data.get('file_name', 'User Request')
-
-        if not run_id:
-            return jsonify({"status": "Error", "msg": "Run ID tidak ditemukan"}), 400
-
-        headers = {
-            "Authorization": f"token {GITHUB_TOKEN}",
-            "Accept": "application/vnd.github.v3+json"
-        }
-
-        # 1. Kirim perintah Cancel ke API GitHub
-        cancel_url = f"https://api.github.com/repos/{GITHUB_USERNAME}/{GITHUB_REPO}/actions/runs/{run_id}/cancel"
-        gh_resp = requests.post(cancel_url, headers=headers)
-
-        # 2. Kirim Notifikasi Pembatalan ke Telegram
-        pesan_cancel = (
-            "❌ *PROSES DIBATALKAN*\n\n"
-            f"📁 Target: `{file_name}`\n"
-            "⚠️ Status: _Aborted by User via Web_"
-        )
-        requests.post(f"https://api.telegram.org/bot{TOKEN_BOT}/sendMessage", json={
-            "chat_id": CHAT_ID, 
-            "text": pesan_cancel, 
-            "parse_mode": "Markdown"
-        })
-
-        return jsonify({"status": "Success", "msg": "Proses berhasil dihentikan"}), 200
-        
-    except Exception as e:
-        return jsonify({"status": "Error", "msg": str(e)}), 500
-
-if __name__ == "__main__":
-    app.run(debug=True)
-
+        rid = data.get('run_id')
+        headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
+        requests.post(f"https://api.github.com/repos/{GITHUB_USERNAME}/{GITHUB_REPO}/actions/runs/{rid}/cancel", headers=headers)
+        return jsonify({"status": "Success"}), 200
+    except:
+        return jsonify({"status": "Error"}), 500
