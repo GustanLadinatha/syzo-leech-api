@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: uses: actions/checkout@v3
+        uses: actions/checkout@v3
 
       - name: Set up Environment
         run: |
@@ -23,12 +23,11 @@ jobs:
           SELECTED_MIRROR="Direct/Original"
           
           if [[ "$URL" == *"sourceforge.net"* ]]; then
-            echo "🔍 SourceForge detected. Analyzing link..."
             PROJ_PATH=$(echo "$URL" | sed -n 's/.*projects\/\([^\/]*\).*/\1/p')
             FILE_PATH_SF=$(echo "$URL" | sed -e 's/.*files\///' -e 's/\/download.*//' -e 's/?.*//')
             
             if [ ! -z "$PROJ_PATH" ] && [ ! -z "$FILE_PATH_SF" ]; then
-              MIRROR_LIST=$(curl -s -m 5 "https://sourceforge.net/settings/mirror_choices?projectname=${PROJ_PATH}&filename=${FILE_PATH_SF}" | grep -oP '(?<=id=").*?(?=")' | head -n 10 || echo "")
+              MIRROR_LIST=$(curl -s -m 5 "https://sourceforge.net/settings/mirror_choices?projectname=${PROJ_PATH}&filename=${FILE_PATH_SF}" | grep -oP '(?<=id=").*?(?=")' | head -n 5 || echo "")
               if [ ! -z "$MIRROR_LIST" ]; then
                 for m in $MIRROR_LIST; do
                   CLEAN_URL="https://downloads.sourceforge.net/project/${PROJ_PATH}/${FILE_PATH_SF}"
@@ -44,26 +43,22 @@ jobs:
           fi
           echo "SELECTED_MIRROR=$SELECTED_MIRROR" >> $GITHUB_ENV
 
-          # --- PERBAIKAN: MESIN DOWNLOAD (ANTI-ABORTED) ---
-          # Menurunkan split ke 4 untuk menghindari 'Invalid Range Header' dari PhoenixNAP
+          # Gunakan koneksi yang lebih stabil (4 koneksi) untuk menghindari 'Invalid range header'
           aria2c --console-log-level=notice \
                  --summary-interval=1 \
                  --max-connection-per-server=4 \
                  --split=4 \
                  --min-split-size=1M \
-                 --buffer-size=2M \
                  --check-certificate=false \
-                 --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" \
+                 --user-agent="Mozilla/5.0" \
                  "$URL" -d . > download_log.txt 2>&1 || true
           
           AVG_SPEED=$(tail -n 20 download_log.txt | grep "DL:" | tail -n 1 | grep -oP 'DL:\K.*?(?= )' || echo "N/A")
           echo "AVG_SPEED=$AVG_SPEED" >> $GITHUB_ENV
 
-          # --- PERBAIKAN: PENENTUAN FILE AKURAT ---
-          # Cari file yang ukurannya lebih dari 1MB (menghindari requirements.txt)
+          # Mencari file hasil download yang asli (di atas 1MB)
           FINAL_FILE=$(find . -maxdepth 1 -type f -size +1M -not -path '*/.*' | head -n 1)
           if [ -z "$FINAL_FILE" ]; then
-            # Jika tidak ada file > 1MB, ambil file terbaru selain file sistem
             FINAL_FILE=$(ls -t | grep -vE "index.py|vercel.json|yml|download_log.txt|requirements.txt" | head -n 1)
           fi
           
@@ -80,12 +75,9 @@ jobs:
         id: upload_step
         continue-on-error: true 
         run: |
-          echo "🚀 Getting Best GoFile Server..."
           SERVER_RESP=$(curl -s https://api.gofile.io/servers)
           SERVER=$(echo $SERVER_RESP | jq -r '.data.servers[0].name // "store1"')
-          
-          echo "🚀 Uploading [${{ env.FILENAME }}] to GoFile ($SERVER)..."
-          RESPONSE=$(curl --connect-timeout 30 --retry 3 -s -F "file=@${{ env.FILE_PATH }}" "https://${SERVER}.gofile.io/contents/uploadfile")
+          RESPONSE=$(curl --connect-timeout 60 --retry 3 -s -F "file=@${{ env.FILE_PATH }}" "https://${SERVER}.gofile.io/contents/uploadfile")
           
           STATUS=$(echo $RESPONSE | jq -r '.status // "error"')
           if [[ "$STATUS" == "ok" ]]; then
@@ -104,33 +96,23 @@ jobs:
           else
             FILE_MD5="N/A"
           fi
-          echo "FILE_MD5=$FILE_MD5" >> $GITHUB_ENV
           
-          URL_TO_SEND="${{ env.FINAL_URL }}"
-          [ -z "$URL_TO_SEND" ] && URL_TO_SEND="${{ github.event.client_payload.url }}"
+          URL_SEND="${{ env.FINAL_URL }}"
+          [ -z "$URL_SEND" ] && URL_SEND="${{ github.event.client_payload.url }}"
           
           curl -s -X POST "https://syzo-leech-api.vercel.app/update_link" \
           -H "Content-Type: application/json" \
-          -d "{\"run_id\": \"${{ github.run_id }}\", \"download_url\": \"$URL_TO_SEND\", \"filename\": \"${{ env.FILENAME }}\", \"md5\": \"$FILE_MD5\"}"
+          -d "{\"run_id\": \"${{ github.run_id }}\", \"download_url\": \"$URL_SEND\", \"filename\": \"${{ env.FILENAME }}\", \"md5\": \"$FILE_MD5\"}"
 
       - name: Notify Telegram Result
         if: always()
         run: |
-          UPLOAD_STATUS="${{ env.UPLOAD_RESULT }}"
-          
           if [[ "${{ job.status }}" == "cancelled" ]]; then
-            MESSAGE="🛑 *Leech Stopped*%0A⚠️ Proses dihentikan oleh pengguna dari website."
-          elif [[ "${{ job.status }}" == "success" ]]; then
-            if [[ "$UPLOAD_STATUS" == "SUCCESS" ]]; then
-              STATUS_EMOJI="✅"
-              STATUS_TEXT="Leech Completed"
-            else
-              STATUS_EMOJI="⚠️"
-              STATUS_TEXT="Leech Completed (Fallback)"
-            fi
-            MESSAGE="${STATUS_EMOJI} *${STATUS_TEXT}*%0A📂 *File:* \`${{ env.FILENAME }}\` %0A🚀 *Speed:* \`${{ env.AVG_SPEED }}\` %0A📡 *Source:* \`${{ env.SELECTED_MIRROR }}\` %0A🔑 *MD5:* \`${{ env.FILE_MD5 }}\` %0A🔗 [Download Link](${{ env.FINAL_URL }})"
+            MESSAGE="🛑 *Leech Stopped*"
+          elif [[ "${{ job.status }}" == "success" && "${{ env.UPLOAD_RESULT }}" == "SUCCESS" ]]; then
+            MESSAGE="✅ *Leech Completed*%0A📂 *File:* \`${{ env.FILENAME }}\` %0A🚀 *Speed:* \`${{ env.AVG_SPEED }}\` %0A🔗 [Download Link](${{ env.FINAL_URL }})"
           else
-            MESSAGE="❌ *Leech Failed*%0A⚠️ Terjadi error teknis pada server GitHub."
+            MESSAGE="⚠️ *Leech Completed (Fallback)*%0A📂 *File:* \`${{ env.FILENAME }}\` %0A🔗 [Original Link](${{ github.event.client_payload.url }})"
           fi
           
           curl -s -X POST "https://api.telegram.org/bot8229203638:AAHI-0fu5NGv8kQmUm5ztd81gbOautvJBB4/sendMessage" \
