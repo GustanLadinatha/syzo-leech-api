@@ -20,23 +20,49 @@ jobs:
       - name: Universal High-Speed Download
         run: |
           URL="${{ github.event.client_payload.url }}"
-          echo "🚀 Memulai High-Speed Turbo Download..."
           
-          # Kita kurangi split sedikit ke 16 agar server tidak menolak (Invalid range)
-          # Tapi kita naikkan buffer untuk menjaga kecepatan tetap maksimal
+          if [[ "$URL" == *"sourceforge.net"* ]] && [[ "$URL" != *"use_mirror="* ]]; then
+            echo "🔍 SourceForge detected. Scraping all available mirrors..."
+            
+            # 1. Mendapatkan URL direct untuk melihat daftar mirror dari API
+            # Kita mengambil project path dari URL asli
+            PROJ_PATH=$(echo "$URL" | grep -oP '(?<=projects/).*?(?=/files/)' | head -1)
+            FILE_PATH=$(echo "$URL" | grep -oP '(?<=files/).*?(?=/download|/|$)')
+            
+            if [ ! -z "$PROJ_PATH" ]; then
+              echo "📡 Fetching mirror list for: $FILE_PATH"
+              # Ambil daftar mirror resmi dari API SourceForge
+              MIRROR_LIST=$(curl -s "https://sourceforge.net/settings/mirror_choices?projectname=${PROJ_PATH}&filename=${FILE_PATH}" | grep -oP '(?<=id=").*?(?=")' | head -n 8)
+              
+              for m in $MIRROR_LIST; do
+                # Bersihkan URL dari parameter ?viasf
+                CLEAN_URL=$(echo "$URL" | sed 's/\?viasf=.*//' | sed 's/\?use_mirror=.*//')
+                TEST_URL="${CLEAN_URL}?use_mirror=$m"
+                
+                echo -n "⚡ Testing mirror [$m]... "
+                # Cek respon tercepat dalam 1.5 detik
+                if curl -o /dev/null -sI -f -m 1.5 "$TEST_URL"; then
+                  URL="$TEST_URL"
+                  echo "🔥 SELECTED (Fastest Response)"
+                  break
+                else
+                  echo "❌ SKIP"
+                fi
+              done
+            fi
+          fi
+
+          echo "🚀 Final Turbo URL: $URL"
+          
+          # Jalankan Aria2 dengan 16 koneksi (Maksimal untuk GitHub)
           aria2c --console-log-level=warn \
                  --summary-interval=1 \
                  --max-connection-per-server=16 \
                  --split=16 \
                  --min-split-size=1M \
-                 --max-overall-download-limit=0 \
-                 --buffer-size=1M \
-                 --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36" \
+                 --buffer-size=2M \
+                 --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" \
                  "$URL" -d .
-          
-          FILE_PATH=$(ls -t | grep -v "index.py" | grep -v "vercel.json" | grep -v "yml" | head -n 1)
-          echo "FILE_PATH=$FILE_PATH" >> $GITHUB_ENV
-          echo "FILENAME=$(basename "$FILE_PATH")" >> $GITHUB_ENV
 
       - name: Upload to Multi-Cloud (GoFile)
         id: upload_step
