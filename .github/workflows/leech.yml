@@ -47,18 +47,26 @@ jobs:
           echo "MD5_HASH=$(md5sum "$CLEAN_NAME" | awk '{print $1}')" >> $GITHUB_ENV
 
       - name: Upload to Multi-Cloud
-        if: success()
         run: |
           echo "🚀 Uploading GoFile..."
-          # Menggunakan API terbaru GoFile untuk upload
-          RESP_GO=$(curl -s -F "file=@${{ env.FILENAME }}" https://store1.gofile.io/contents/uploadfile)
-          URL_GO=$(echo "$RESP_GO" | jq -r '.data.downloadPage // empty')
+          # Tambahkan -s (silent) agar tidak ada progres bar yang merusak parsing jq
+          RESPONSE=$(curl -s -F "file=@${{ env.FILE_PATH }}" https://store1.gofile.io/contents/uploadfile)
+          echo "Debug Response: $RESPONSE"
           
-          echo "🚀 Uploading Catbox..."
-          URL_CAT=$(curl -s -F "reqtype=fileupload" -F "fileToUpload=@${{ env.FILENAME }}" https://catbox.moe/user/api.php)
+          # Pastikan respon tidak kosong sebelum di-parse
+          if [[ -z "$RESPONSE" ]]; then
+            echo "Error: Empty response from GoFile"
+            exit 1
+          fi
+
+          DOWNLOAD_URL=$(echo $RESPONSE | jq -r '.data.downloadPage')
           
-          echo "DOWNLOAD_URL_GOFILE=$URL_GO" >> $GITHUB_ENV
-          echo "DOWNLOAD_URL_CATBOX=$URL_CAT" >> $GITHUB_ENV
+          if [[ "$DOWNLOAD_URL" == "null" ]]; then
+             echo "Error: Upload failed"
+             exit 1
+          fi
+          
+          echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
 
       # --- TAMBAHAN: KIRIM LINK BALIK KE WEBSITE VIA VERCEL ---
       - name: Notify Vercel Result
