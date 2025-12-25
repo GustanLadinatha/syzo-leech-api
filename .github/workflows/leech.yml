@@ -82,5 +82,29 @@ jobs:
       - name: Notify Telegram Result
         if: always()
         run: |
-          MESSAGE="✅ *Leech Completed*%0A📂 *File:* \`${{ env.FILENAME }}\` %0A🚀 *Speed:* \`${{ env.AVG_SPEED }}\` %0A📡 *Source:* \`${{ env.SELECTED_MIRROR }}\` %0A🔗 [Download Link](${{ env.FINAL_URL }})"
-          curl -s -X POST "https://api.telegram.org/bot8229203638:AAHI-0fu5NGv8kQmUm5ztd81gbOautvJBB4/sendMessage" -d "chat_id=-5089072043&text=$MESSAGE&parse_mode=Markdown"
+          # Ambil status dari langkah upload
+          UPLOAD_STATUS="${{ env.UPLOAD_RESULT }}"
+          
+          # 1. KONDISI JIKA CANCELLED (DIBATALKAN)
+          if [[ "${{ job.status }}" == "cancelled" ]]; then
+            MESSAGE="🛑 *Leech Stopped*%0A⚠️ Proses dihentikan oleh pengguna dari website."
+          
+          # 2. KONDISI JIKA SUCCESS (BERHASIL)
+          elif [[ "${{ job.status }}" == "success" ]]; then
+            if [[ "$UPLOAD_STATUS" == "SUCCESS" ]]; then
+              STATUS_EMOJI="✅"
+              STATUS_TEXT="Leech Completed"
+            else
+              STATUS_EMOJI="⚠️"
+              STATUS_TEXT="Leech Completed (Fallback)"
+            fi
+            MESSAGE="${STATUS_EMOJI} *${STATUS_TEXT}*%0A📂 *File:* \`${{ env.FILENAME }}\` %0A🚀 *Speed:* \`${{ env.AVG_SPEED }}\` %0A📡 *Source:* \`${{ env.SELECTED_MIRROR }}\` %0A🔑 *MD5:* \`${{ env.FILE_MD5 }}\` %0A🔗 [Download Link](${{ env.FINAL_URL }})"
+          
+          # 3. KONDISI JIKA FAILED (GAGAL)
+          else
+            MESSAGE="❌ *Leech Failed*%0A⚠️ Terjadi error teknis pada server GitHub."
+          fi
+          
+          # Kirim ke Telegram
+          curl -s -X POST "https://api.telegram.org/bot8229203638:AAHI-0fu5NGv8kQmUm5ztd81gbOautvJBB4/sendMessage" \
+          -d "chat_id=-5089072043&text=$MESSAGE&parse_mode=Markdown"
