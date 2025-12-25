@@ -48,26 +48,26 @@ jobs:
 
       - name: Upload to Multi-Cloud
         run: |
-          echo "🚀 Uploading GoFile..."
-          # Tambahkan -s (silent) agar tidak ada progres bar yang merusak parsing jq
-          RESPONSE=$(curl -s -F "file=@${{ env.FILE_PATH }}" https://store1.gofile.io/contents/uploadfile)
-          echo "Debug Response: $RESPONSE"
+          echo "🚀 Getting Best GoFile Server..."
+          # Ambil server terbaik secara dinamis
+          SERVER=$(curl -s https://api.gofile.io/servers | jq -r '.data.servers[0].name')
+          echo "Using Server: $SERVER"
+
+          echo "🚀 Uploading to GoFile..."
+          # Gunakan server dinamis hasil crawl tadi
+          RESPONSE=$(curl -s -F "file=@${{ env.FILE_PATH }}" "https://${SERVER}.gofile.io/contents/uploadfile")
           
-          # Pastikan respon tidak kosong sebelum di-parse
-          if [[ -z "$RESPONSE" ]]; then
-            echo "Error: Empty response from GoFile"
+          # Cek apakah upload sukses
+          STATUS=$(echo $RESPONSE | jq -r '.status')
+          
+          if [[ "$STATUS" == "ok" ]]; then
+            DOWNLOAD_URL=$(echo $RESPONSE | jq -r '.data.downloadPage')
+            echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
+            echo "✅ Upload Success: $DOWNLOAD_URL"
+          else
+            echo "❌ Upload Failed! Response: $RESPONSE"
             exit 1
           fi
-
-          DOWNLOAD_URL=$(echo $RESPONSE | jq -r '.data.downloadPage')
-          
-          if [[ "$DOWNLOAD_URL" == "null" ]]; then
-             echo "Error: Upload failed"
-             exit 1
-          fi
-          
-          echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
-
       # --- TAMBAHAN: KIRIM LINK BALIK KE WEBSITE VIA VERCEL ---
       - name: Notify Vercel Result
         if: success()
